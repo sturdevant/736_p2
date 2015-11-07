@@ -3,46 +3,184 @@
  * public functions of internal nodes are described first.
  */
 
-InternalNode::InternalNode() {
+InternalNode::InternalNode(unsigned int nDims,
+                           unsigned int nChildren
+                           double scale,
+                           double* mins,
+                           double* maxes,
+                           ErrorCode (*requestFunc)(unsigned int, Request*),
+                           ErrorCode (*responseFunc)(Response*)) {
    this.dims = nDims;
    this.scale = scale;
    this.mins = mins;
    this.nOwners = nChildren;
-   this.thread = (pthread_t*)malloc(sizeof(pthread_t));
+   this.requestFunc = requestFunc;
+   this.responseFunc = responseFunc;
+   //this.thread = (pthread_t*)malloc(sizeof(pthread_t));
 
    setLengths(maxes);
    setDimFactors();
-   setMaxIndex(maxes);
+   setMaxIndex();
    assignOwners();
 
-   // Need to thread out behavior here. We need to make it so that this can run
+   // TODO: (maybe? maybe not) Need to thread out behavior here. We need to make it so that this can run
    // independently of the caller and can accept asynchronous requests and
    // responses.
 
-
+   // TODO: Instantiate ResponseTable
 }
 
 InternalNode::~InternalNode() {
-   pthread_cancel(thread);
-   pthread_join(thread, NULL);
+   //pthread_cancel(thread);
+   //pthread_join(thread, NULL);
+   //free(thread);
    free(dimFactors);
    free(lengths);
    free(owners);
 }
 
-ErrorCode InternalNode::AddPoint() {
+/*
+ * When a point is added, we need to see if we should be aggregating data here
+ * (in the case of multiple children having data about the point), or if we
+ * should just send the point downstream because one of our children has all of
+ * the data on its own.
+ *
+ * ASSUMPTION: The forwarding function does NOT need the data after it is
+ * called and all such pointers should be freed.
+ */
+ErrorCode InternalNode::addPoint(Request* req) {
 
+   // Verify that the request was actually the type that this function can
+   // handle.
+   RequestType t = req->getRequestType();
+   if (t != REQUEST_TYPE_ADD_POINT) {
+      return ERROR_CODE_BAD_REQUEST_TYPE;
+   }
+
+   // Get the point origin of the request.
+   double* pt = req->getPoint();
+
+   // Get a list of all children with data about that point.
+   std::vector<unsigned int> ptOwners();
+   getPointOwnerGroup(pt, &ptOwners);
+
+   // Set up the return value, hoping for no troubles.
+   ErrorCode err = ERROR_CODE_NO_ERROR;
+
+   // If there wasn't exactly 1 owner, then we need to request data from our
+   // children and aggregate it here.
+   if (ptOwners.size() > 1) {
+
+      // We need an entry in our table so we know to wait for the incoming
+      // point.
+      childResponses.registerRequest(req.getID(), ptOwners.size());
+
+      Request* newReq = new Request(REQUEST_TYPE_POINT_DATA);
+      newReq.setPoint(pt);
+      newReq.setID(req->getID());
+
+      // Go through and send a data request to each of the lower nodes.
+      for (size_type i = 0; i < ptOwners.size(); i++) {
+         err = (*requestFunc)(newReq);
+      }
+      delete newReq;
+
+   // If there was exactly 1 child with data about the point, just forward the
+   // request.
+   } else if (ptOwners.size() == 1) {
+      err = (*requestFunc)(req);
+
+      // If there was only one child with data, we don't need to store entries
+      // in our table, so we should free the point.
+      free(pt);
+   }
+
+   // TODO: Do I need to  delete the Request here? Idk, but I think so.
+   delete req;
+
+   return err;
 }
 
-Response InternalNode::QueryPoint() {
-   
+// TODO: Consider combining query and addPoint.
+/*
+ * When a request for data is sent, put it on a queue for the thread to get to.
+ */
+ErrorCode InternalNode::query(Request* req) {
+   // Verify that the request was actually the type that this function can
+   // handle.
+   RequestType t = req->getRequestType();
+   if (t == REQUEST_TYPE_ADD_POINT || t == REQUEST_TYPE_INVALID) {
+      return ERROR_CODE_BAD_REQUEST_TYPE;
+   }
+
+   // Get the point origin of the request.
+   double* pt = req->getPoint();
+
+   // Get a list of all children with data about that point.
+   std::vector<unsigned int> ptOwners();
+   getPointOwnerGroup(pt, &ptOwners);
+
+   // Set up the return value, hoping for no troubles.
+   ErrorCode err = ERROR_CODE_NO_ERROR;
+
+   // If there wasn't exactly 1 owner, then we need to request data from our
+   // children and aggregate it here.
+   if (ptOwners.size() > 1) {
+
+      // We need an entry in our table so we know to wait for the incoming
+      // point.
+      childResponses.registerRequest(req.getID(), ptOwners.size());
+
+      RequestType newType = t;
+      if (t == REQUEST_TYPE_POINT_QUERY) {
+         newType = REQUEST_TYPE_POINT_DATA;
+      else {
+         newType = REQUEST_TYPE_POLYGON_DATA;
+      }
+
+      // TODO: Consider reusing req.
+      Request* newReq = new Request(newType);
+      newReq.setPoint(pt);
+      newReq.setID(req->getID());
+
+      // Go through and send a data request to each of the lower nodes.
+      for (size_type i = 0; i < ptOwners.size(); i++) {
+         err = (*requestFunc)(newReq);
+      }
+      delete newReq;
+
+   // If there was exactly 1 child with data about the point, just forward the
+   // request.
+   } else if (ptOwners.size() == 1) {
+      err = (*requestFunc)(req);
+
+      // If there was only one child with data, we don't need to store entries
+      // in our table, so we should free the point.
+      free(pt);
+   }
+
+   // TODO: Do I need to  delete the Request here? Idk, but I think so.
+   delete req;
+
+   return err;
 }
 
-Response InternalNode::QueryPolygon() {
-
+/*
+ * When this node is set to recieve information from down stream about one of
+ * its requests, this function is called with the response.
+ */
+void InternalNode::update(Response* res) {
+   childResponses.update(res);
 }
 
 // PRIVATE INTERFACE BEGINS HERE
+
+// TODO: Thread starting function. (static?)
+
+// TODO: Callback function for the ResponseTable when it has data. (static?)
+static void InternalNode::responseCallback(InternalNode* node, Response* responses, unsigned int nResponses) {
+   // TODO: Handle point aggregation and what not.
+}
 
 /*
  * This function returns the integer that identifies a child node (called an
@@ -255,7 +393,7 @@ void InternalNode::setDimFactors() {
    }
 }
 
-void InternalNode::setMaxIndex(double* maxes) {
+void InternalNode::setMaxIndex() {
    
    maxIndex = dimFactor[dims - 1] * lengths[dims - 1] - 1;
 

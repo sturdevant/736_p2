@@ -58,9 +58,9 @@ int main(int argc, char** argv) {
 
    portnum = atoi(argv[2]);
 
-   int i = 2;
+   int i = 4;
 
-   if (strcmp(argv[3], "-log")) {
+   if (!strcmp(argv[i], "-log")) {
       i++;
       log = 1;
    }
@@ -136,7 +136,10 @@ int main(int argc, char** argv) {
    }
 
    // TODO: Timekeeping/cv_signal
-   while(1) {
+   while (1) {
+      if (!(tick % 5)) {
+         std::cout << "Tick = " << tick << std::endl;
+      }
       retval = sleep(1);
       if (retval != 0) {
          printf("ERROR: Failed to sleep!\n");
@@ -148,8 +151,8 @@ int main(int argc, char** argv) {
    }
 
    // Wait for each of the child threads to finish.
-   for (; i >= 0; i--) {
-      pthread_join(threads[i], NULL);
+   for (; threadCount > 0; threadCount--) {
+      pthread_join(threads[threadCount - 1], NULL);
    }
 
    printf("Client finished.\n");
@@ -197,12 +200,16 @@ void* startPointQueryThread(void* arg) {
    FILE* outfd;
    int fd = connectToHost();
    size_t index;
-   double* pt = (double*)malloc(N_DIMENSIONS * sizeof(double));
+   char* writeBuf = (char*)malloc(1 + N_DIMENSIONS * sizeof(double));
    char* buf = (char*)malloc(N_DIMENSIONS * DIM_BUFFER_SIZE);
-   if (pt == NULL || buf == NULL) {
+   if (writeBuf == NULL || buf == NULL) {
       printf("ERROR: Could not allocate line buffer! Exiting...\n");
       exit(-1);
    }
+
+   // Make 1 byte of room at the beginning for the type.
+   double* pt = (double*)(&writeBuf[1]);
+   writeBuf[0] = '3';
    std::fstream in((char*)args->input, fstream::in);
 
    int log = args->output != NULL;
@@ -222,11 +229,14 @@ void* startPointQueryThread(void* arg) {
    }
 
    while(!in.eof()) {
+      std::cout << "Found another line!\n";
       in.getline(buf, N_DIMENSIONS * DIM_BUFFER_SIZE - 1);
+      std::cout << "Line read: " << buf << std::endl;
       if (buf[0] == 't') {
-         
+        
          // This is a timestamp, so we may need to wait.
          unsigned long t = atol(&buf[1]);
+         std::cout << "Timestamp found: " << t << std::endl;
          pthread_mutex_lock(&timeLock);
          while (t > tick) {
             // This timestamp hasn't come yet, so we need to go to sleep.
@@ -242,22 +252,30 @@ void* startPointQueryThread(void* arg) {
          
          //index = 0;
 
+         char* curBuf = buf;
          // This will be an actual point with components separated by commas.
          for (i = 0; i < N_DIMENSIONS; i++) {
-            pt[i] = atof(buf);
-            buf = strchr(buf, ',') + 1;
+            pt[i] = atof(curBuf);
+            curBuf = strchr(curBuf, ',') + 1;
          }
 
-         // If we're logging, we need to tell our logger to look for this point.
-         logQueue->add(pt);
+         if (log) {
+            std::cout << "About to log point." << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
 
+            // If we're logging, we need to tell our logger to look for this point.
+            logQueue->add(pt);
+         }
+
+         printf("%02X\n", *writeBuf);
+         std::cout << "About to write to server:" << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
          // Now, we need to put out the point in a format that the server can
          // interpret properly (including tagging it as a point query).
-         if (write(fd, pt, N_DIMENSION * sizeof(double)) !=
-                           N_DIMENSION * sizeof(double)) {
+         if (write(fd, writeBuf, 1 + N_DIMENSION * sizeof(double)) !=
+                                 1 + N_DIMENSION * sizeof(double)) {
             printf("ERROR: Failed to write to server! Exiting!\n");
             exit(-1);
          }
+         std::cout << "Sent data to server...\n";
       }
    }  
 }
