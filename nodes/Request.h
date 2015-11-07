@@ -1,6 +1,8 @@
 #ifndef _REQUEST_H_
 #define _REQUEST_H_
 
+typedef enum RequestType {REQUEST_TYPE_INVALID} RequestType;
+
 class Request {
 public:
    Request(RequestType type);

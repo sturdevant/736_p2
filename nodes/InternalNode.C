@@ -8,8 +8,8 @@ InternalNode::InternalNode(unsigned int nDims,
                            double scale,
                            double* mins,
                            double* maxes,
-                           ErrorCode (*requestFunc)(unsigned int, Request*),
-                           ErrorCode (*responseFunc)(Response*)) {
+                           ReturnCode (*requestFunc)(unsigned int, Request*),
+                           ReturnCode (*responseFunc)(Response*)) {
    this.dims = nDims;
    this.scale = scale;
    this.mins = mins;
@@ -48,7 +48,7 @@ InternalNode::~InternalNode() {
  * ASSUMPTION: The forwarding function does NOT need the data after it is
  * called and all such pointers should be freed.
  */
-ErrorCode InternalNode::addPoint(Request* req) {
+ReturnCode InternalNode::addPoint(Request* req) {
 
    // Verify that the request was actually the type that this function can
    // handle.
@@ -65,7 +65,7 @@ ErrorCode InternalNode::addPoint(Request* req) {
    getPointOwnerGroup(pt, &ptOwners);
 
    // Set up the return value, hoping for no troubles.
-   ErrorCode err = ERROR_CODE_NO_ERROR;
+   ReturnCode err = ERROR_CODE_NO_ERROR;
 
    // If there wasn't exactly 1 owner, then we need to request data from our
    // children and aggregate it here.
@@ -105,7 +105,7 @@ ErrorCode InternalNode::addPoint(Request* req) {
 /*
  * When a request for data is sent, put it on a queue for the thread to get to.
  */
-ErrorCode InternalNode::query(Request* req) {
+ReturnCode InternalNode::query(Request* req) {
    // Verify that the request was actually the type that this function can
    // handle.
    RequestType t = req->getRequestType();
@@ -121,7 +121,7 @@ ErrorCode InternalNode::query(Request* req) {
    getPointOwnerGroup(pt, &ptOwners);
 
    // Set up the return value, hoping for no troubles.
-   ErrorCode err = ERROR_CODE_NO_ERROR;
+   ReturnCode err = ERROR_CODE_NO_ERROR;
 
    // If there wasn't exactly 1 owner, then we need to request data from our
    // children and aggregate it here.
@@ -276,7 +276,7 @@ void InternalNode::getPointOwnerGroup(double* pt, std::vector<unsigned int>& uni
    // Now, begin the recursive calls to find nearby cells.
    getCellOwnerGroup(whichDims, cell, uniqueOwners, dims);
    free(whichDims);
-   free(cells);
+ free(cells);
 }
 
 /*

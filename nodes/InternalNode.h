@@ -7,16 +7,16 @@
 #include <algorithm>
 #include <vector>
 #include "Request.h"
-#include "ErrorCodes.h"
+#include "ReturnCodes.h"
 
 class InternalNode {
 
 public:
 
-InternalNode(unsigned int nDims, double scale, double* mins, double* maxes, unsigned int nChildren, ErrorCode (*requestFunc)(unsigned int, Request*), ErrorCode (*responseFunc)(Response*));
+InternalNode(unsigned int nDims, double scale, double* mins, double* maxes, unsigned int nChildren, ReturnCode (*requestFunc)(unsigned int, Request*), ReturnCode (*responseFunc)(Response*));
 ~InternalNode();
-ErrorCode addPoint(Request* req);
-ErrorCode query(Request* req);
+ReturnCode addPoint(Request* req);
+ReturnCode query(Request* req);
 void update(Response* res);
 
 private:
@@ -52,8 +52,8 @@ private:
    double scale;
 
    pthread_t thread;
-   ErrorCode (*requestFunc)(unsigned int, Request*);
-   ErrorCode (*responseFunc)(Response*);
+   ReturnCode (*requestFunc)(unsigned int, Request*);
+   ReturnCode (*responseFunc)(Response*);
 
    ResponseTable childResponses;
 };

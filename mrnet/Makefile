@@ -2,6 +2,8 @@ MRNETLIBBASE = $(HOME)/private/mrnet
 MRNETLIBS = $(HOME)/private/mrnet/lib
 MRNETINCLUDE = $(HOME)/private/mrnet/include
 XPLATINCLUDE = $(HOME)/private/mrnet/lib/xplat-5.0.0/include
+UTILINCLUDE = ../util
+NODESINCLUDE = ../nodes
 CURDIR = $(shell pwd)
 LLIBS = -std=c++0x -g -O0 -L/lrz/sys/libraries/boost/1.58_gcc/lib -lmrnet -lm -lpthread -ldl -lboost_system -lxplat
 SHAREDLIBS = -fPIC -shared
@@ -17,4 +19,4 @@ IntegerAddition_BE: IntegerAddition_BE.C
 
 
 IntegerAdditionFilter: IntegerAdditionFilter.C
-	g++ -L$(MRNETLIBS) -I$(MRNETLIBBASE) -I$(MRNETINCLUDE) -I$(XPLATINCLUDE) -ldl IntegerAdditionFilter.C $(LLIBS) -shared -fPIC -o $(CURDIR)/IntegerAdditionFilter.so -ldl
+	g++ -L$(MRNETLIBS) -I$(UTILINCLUDE) -I$(NODESINCLUDE) -I$(MRNETLIBBASE) -I$(MRNETINCLUDE) -I$(XPLATINCLUDE) -ldl IntegerAdditionFilter.C $(LLIBS) -shared -fPIC -o $(CURDIR)/IntegerAdditionFilter.so -ldl

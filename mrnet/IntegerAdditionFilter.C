@@ -7,13 +7,18 @@
 #include "mrnet/MRNet.h"
 #include "mrnet/Packet.h"
 #include "mrnet/NetworkTopology.h"
+#include "ReturnCode.h"
+#include "Request.h"
 
 using namespace MRN;
 
 extern "C" {
 
 bool isLeaf = false;
+const Network* network = NULL;
 Stream** streams = NULL;
+Communicator** comms = NULL;
+Rank* childRanks = NULL;
 
 const char* PointMux_format_string = "%f%f";
 void PointMux(std::vector< PacketPtr >& packets_in,
@@ -43,33 +48,64 @@ void PointMux(std::vector< PacketPtr >& packets_in,
       printf("Rank: %d got point %f, %f\n", (int)t.get_Rank(), x, y);
    }
 }
+/*
+ * Could consider creating packaging code as shown here.
+PacketPtr getRequestPacket(Request* req, unsigned int stream_id) {
+   return new Packet(stream_id, 1994, "%ld", 7);
+}
+*/
 
-const char * IntegerInit_format_string = "%d%f%f";
-void IntegerInit( std::vector< PacketPtr >& packets_in,
-                 std::vector< PacketPtr >& packets_out,
-                 std::vector< PacketPtr >& /* packets_out_reverse */,
-                 void ** /* client data */,
-		 PacketPtr& /* params */,
-                 const TopologyLocalInfo& t)
+ReturnCode requestHandler(unsigned int child, Request* req) {
+   network->send(childRanks[child], 1994, "%ld", 7);
+   //PacketPtr requestPacket = getRequestPacket(req, streams[child]->get_Id());
+   streams[child]->send(1994, "%ld", 7);
+   //delete requestPacket;
+}
+
+const char * TreeInit_format_string = "%d%d%d%lf%lf%lf%lf";
+void TreeInit(std::vector< PacketPtr >& packets_in,
+              std::vector< PacketPtr >& packets_out,
+              std::vector< PacketPtr >& /* packets_out_reverse */,
+              void ** /* client data */,
+		        PacketPtr& /* params */,
+              const TopologyLocalInfo& t)
 {
    const Network* net = t.get_Network();
+   network = net;
    NetworkTopology* nTop = net->get_NetworkTopology();
 
    printf("Downstream filter from rank = %d\n", (int)t.get_Rank());
-   NetworkTopology::Node* n = nTop->find_Node(t.get_Rank());
-   const std::set<NetworkTopology::Node*> children = n->get_Children();
+   NetworkTopology::Node* thisNode = nTop->find_Node(t.get_Rank());
+   const std::set<NetworkTopology::Node*> children = thisNode->get_Children();
    std::set<NetworkTopology::Node*>::iterator cIt = children.begin();
+  
+   int upTFilter, upSFilter, downTFilter;
 
-   int nChildren = n->get_NumChildren();
+   double xMin, xMax, yMin, yMax;
+
+   packets_in[0]->unpack(TreeInit_format_string,
+                         &upTFilter,
+                         &upSFilter,
+                         &downTFilter,
+                         &xMin, &xMax,
+                         &yMin, &yMax);
+
+   printf("BOUNDS: X: %lf to %lf Y: %lf to %lf\n", xMin, xMax, yMin, yMax);
+
+   int nChildren = thisNode->get_NumChildren();
    streams = (Stream**)malloc(sizeof(Stream*) * nChildren);
-
-   if (streams == NULL) {
-      printf("ERROR: Could not allocate streams to children!\n");
+   comms = (Communicator**)malloc(sizeof(Communicator*) * nChildren);
+   if (streams == NULL || comms == NULL) {
+      printf("ERROR: Could not allocate streams and communicators!\n");
    }
 
+   //int i = 0;
    for (; cIt != children.end(); cIt++) {
+      //comms[i] = net->new_Communicator();
       printf("\tHAS CHILD: %d\n", (int)(*cIt)->get_Rank());
-      //streams[i] = new Stream();
+      //comms[i]->add_EndPoint((*cIt)->get_Rank());
+      //streams[i] = new Stream(comms[i], upTFilter, upSFilter, downTFilter);
+      //i++;
    }
 
    if (net->is_LocalNodeChild()) {
