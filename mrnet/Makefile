@@ -9,12 +9,12 @@ SHAREDLIBS = -fPIC -shared
 all: IntegerAddition_FE IntegerAddition_BE IntegerAdditionFilter
 
 IntegerAddition_FE: IntegerAddition_FE.C
-	g++ -L$(MRNETLIBS) -I$(MRNETLIBBASE) -I$(MRNETINCLUDE) -I$(XPLATINCLUDE) -ldl IntegerAddition_FE.C $(LLIBS) -o $(CURDIR)/bin/IntegerAddition_FE -ldl
+	g++ -L$(MRNETLIBS) -I$(MRNETLIBBASE) -I$(MRNETINCLUDE) -I$(XPLATINCLUDE) -ldl IntegerAddition_FE.C $(LLIBS) -o $(CURDIR)/IntegerAddition_FE -ldl
 
 
 IntegerAddition_BE: IntegerAddition_BE.C
-	g++ -L$(MRNETLIBS) -I$(MRNETLIBBASE) -I$(MRNETINCLUDE) -I$(XPLATINCLUDE) -ldl IntegerAddition_BE.C $(LLIBS) -o $(CURDIR)/bin/IntegerAddition_BE -ldl
+	g++ -L$(MRNETLIBS) -I$(MRNETLIBBASE) -I$(MRNETINCLUDE) -I$(XPLATINCLUDE) -ldl IntegerAddition_BE.C $(LLIBS) -o $(CURDIR)/IntegerAddition_BE -ldl
 
 
-IntegerAdditionFilter: IntegerAddition_Filter.C
-	g++ -L$(MRNETLIBS) -I$(MRNETLIBBASE) -I$(MRNETINCLUDE) -I$(XPLATINCLUDE) -ldl IntegerAdditionFilter.C $(LLIBS) -shared -fPIC -o $(CURDIR)/bin/IntegerAdditionFilter.so -ldl
+IntegerAdditionFilter: IntegerAdditionFilter.C
+	g++ -L$(MRNETLIBS) -I$(MRNETLIBBASE) -I$(MRNETINCLUDE) -I$(XPLATINCLUDE) -ldl IntegerAdditionFilter.C $(LLIBS) -shared -fPIC -o $(CURDIR)/IntegerAdditionFilter.so -ldl
