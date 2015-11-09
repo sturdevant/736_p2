@@ -3,17 +3,16 @@
  * public functions of internal nodes are described first.
  */
 
-InternalNode::InternalNode(unsigned int nDims,
-                           unsigned int nChildren
-                           double scale,
-                           double* mins,
-                           double* maxes,
-                           ReturnCode (*requestFunc)(unsigned int, Request*),
-                           ReturnCode (*responseFunc)(Response*)) {
+LeafNode::LeafNode(unsigned int nDims,
+                   double scale,
+                   double* mins,
+                   double* maxes,
+                   ReturnCode (*requestFunc)(unsigned int, Request*),
+                   ReturnCode (*responseFunc)(Response*)) {
+
    this.dims = nDims;
    this.scale = scale;
    this.mins = mins;
-   this.nOwners = nChildren;
    this.requestFunc = requestFunc;
    this.responseFunc = responseFunc;
    //this.thread = (pthread_t*)malloc(sizeof(pthread_t));
@@ -21,113 +20,74 @@ InternalNode::InternalNode(unsigned int nDims,
    setLengths(maxes);
    setDimFactors();
    setMaxIndex();
-   assignOwners();
+   initPointLists();
 
    // TODO: (maybe? maybe not) Need to thread out behavior here. We need to make
    // it so that this can run independently of the caller and can accept
    // asynchronous requests and responses.
 }
 
-InternalNode::~InternalNode() {
+LeafNode::~LeafNode() {
    //pthread_cancel(thread);
    //pthread_join(thread, NULL);
    //free(thread);
    free(dimFactors);
    free(lengths);
-   free(owners);
 }
 
-/*
- * When a point is added, we need to see if we should be aggregating data here
- * (in the case of multiple children having data about the point), or if we
- * should just send the point downstream because one of our children has all of
- * the data on its own.
- */
-ReturnCode InternalNode::addPoint(Request* req) {
-
-   // Verify that the request was actually the type that this function can
-   // handle.
-   RequestType t = req->getRequestType();
-   if (t != REQUEST_TYPE_ADD_POINT) {
-      return ERROR_CODE_BAD_REQUEST_TYPE;
-   }
-
-   // Get the point origin of the request.
-   double* pt = req->getPoint();
-
-   unsigned int ptOwner = getPointOwner(pt);
-   return (*requestFunc)(ptOwner, req);
-}
-
-// TODO: Consider combining query and addPoint.
 /*
  * When a request for data is sent, put it on a queue for the thread to get to.
  */
-ReturnCode InternalNode::query(Request* req) {
+Response* LeafNode::query(Request* req) {
    // Verify that the request was actually the type that this function can
    // handle.
    RequestType t = req->getRequestType();
-   if (t == REQUEST_TYPE_ADD_POINT || t == REQUEST_TYPE_INVALID) {
-      return ERROR_CODE_BAD_REQUEST_TYPE;
-   }
-   double* pt = req->getPoint();
-
-   unsigned int ptOwner = getPointOwner(pt);
-   return (*requestFunc)(ptOwner, req);
-}
-
-/*
- * When this node is set to recieve information from down stream about one of
- * its requests, this function is called with the response.
- */
-ReturnCode InternalNode::update(Response* res) {
-
-   ResponseType t = res->getResponseType();
-   if (t != RESPONSE_TYPE_ADD_POINT) {
-      return RETURN_CODE_NO_ERROR;
+   switch(t) {
+   case REQUEST_TYPE_UPDATE_POINT:
+      return handleUpdate(req);
+   case REQUEST_TYPE_ADD_POINT:
+      return handleAdd(req);
+   case REQUEST_TYPE_POINT_DATA:
+      return handlePoint(req);
+   case REQUEST_TYPE_POLYGON_DATA:
+      return handlePolygon(req);
    }
 
-   // TODO: Send new info to lower nodes.
-   unsigned long timestamp = res->getTimeStamp();
-   double* pt = res->getPoint();
-   unsigned long id = res->getID();
-
-   unsigned int owner = getPointOwner(pt);
-   std::vector<unsigned int> ptOwners();
-   getPointOwnerGroup(pt, &ptOwners);
-
-   // If there was more than one owner, we need to send this request down the
-   // line to multiple nodes for storing in their shadow regions.
-   if (ptOwners.size() > 1) {
-
-      // Generate a new request, this time as an update, to send to all of the
-      // nodes that need to know about this point (owners of it).
-      Request* newReq = new Request(REQUEST_TYPE_UPDATE_POINT);
-      newReq->setTimeStamp(timestamp);
-      newReq->setPoint(pt);
-      newReq->setID(req->getID());
-
-      // Set up the return value, hoping for no trouble.
-      ReturnCode err = RETURN_CODE_NO_ERROR;
-
-      // Go through and send an update request to each of the lower nodes.
-      for (size_type i = 0; i < ptOwners.size(); i++) {
-         if (ptOwners[i] != owner) {
-            err = (*requestFunc)(ptOwners[i], newReq);
-            if (err != RETURN_CODE_NO_ERROR) {
-               return err;
-            }
-         }
-      }
-      delete newReq;
-   }
-
-   return RETURN_CODE_NO_ERROR;
+   return RETURN_CODE_BAD_REQUEST_TYPE;
 }
 
 // PRIVATE INTERFACE BEGINS HERE
 
 // TODO: Thread starting function. (static?)
+
+unsigned long LeafNode::countNeighbors(double* pt) {
+   
+}
+
+/*
+ * This is equivalent to getCellOwnerGroup, it just converts the double point
+ * data into a nice integer cell where the point belongs.
+ */
+void LeafNode::getPointOwnerGroup(double* pt, std::vector<unsigned int>& uniqueOwners) {
+
+   unsigned int index = 0;
+
+   // Build a list of dimensions to recurse over.
+   unsigned int* whichDims = (unsigned int*)malloc(dims * sizeof(unsigned int));
+
+   // Construct an integer representation for the cell that the point is in.
+   unsigned int* cell = (unsigned int*)malloc(dims * sizeof(unsigned int));
+   for (unsigned int i = 0; i < dims; i++) {
+      cell[i] = (unsigned int)floor((pt[i] - mins[i]) * scale);
+      whichDims[i] = i;
+   }
+
+   // Now, begin the recursive calls to find nearby cells.
+   getCellOwnerGroup(whichDims, cell, uniqueOwners, dims);
+   free(whichDims);
+ free(cells);
+}
+
 
 /*
  * This function returns the integer that identifies a child node (called an

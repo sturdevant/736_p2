@@ -13,14 +13,20 @@ class InternalNode {
 
 public:
 
-InternalNode(unsigned int nDims, double scale, double* mins, double* maxes, unsigned int nChildren, ReturnCode (*requestFunc)(unsigned int, Request*), ReturnCode (*responseFunc)(Response*));
-~InternalNode();
-ReturnCode addPoint(Request* req);
-ReturnCode query(Request* req);
-void update(Response* res);
+   InternalNode(unsigned int nDims,
+                double scale,
+                double* mins,
+                double* maxes,
+                unsigned int nChildren,
+                ReturnCode (*requestFunc)(unsigned int, Request*),
+                ReturnCode (*responseFunc)(Response*));
+
+   ~InternalNode();
+   ReturnCode addPoint(Request* req);
+   ReturnCode query(Request* req);
+   ReturnCode update(Response* res);
 
 private:
-
    
    unsigned int getPointOwner(double* pt);
    void getPointOwnerGroup(double* pt,
