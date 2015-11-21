@@ -1,19 +1,24 @@
 #ifndef _REQUEST_H_
 #define _REQUEST_H_
 
-typedef enum RequestType {REQUEST_TYPE_INVALID} RequestType;
+#include <limits.h>
+#include "RequestType.h"
+#include "Point.h"
+#include <stdlib.h>
+
+#define REQUEST_ID_INVALID ULLONG_MAX
 
 class Request {
 public:
    Request(RequestType type);
    void setID(unsigned long newID);
-   void setPoint(double* newPt);
+   void setPoint(Point* newPt);
    RequestType getRequestType();
-   double* getPoint();
+   Point* getPoint();
    unsigned long getID();
 private:
    RequestType t;
-   double* pt;
+   Point* pt;
    unsigned long id;
 };
 

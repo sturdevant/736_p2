@@ -64,7 +64,7 @@ int main(int argc, char **argv)
      
    std::vector<const char*> filterNames;
    filterNames.push_back("IntegerAdd");
-   filterNames.push_back("IntegerInit");
+   filterNames.push_back("TreeInit");
    std::vector<int> filterIds;
 
    // Make sure path to "so_file" is in LD_LIBRARY_PATH
@@ -88,10 +88,14 @@ int main(int argc, char **argv)
      // waves of integers
      tag = PROT_SUM;
      unsigned int num_iters=5;
-     if( add_stream->send( tag, "%d %d", send_val, num_iters ) == -1 ){
+     
+     std::cout << "sending packet!\n";
+     if( add_stream->send( tag, "%lf %lf %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %lf",
+      .3, 4., .95, .1, -1.0, 1.0, -1.0, 1.0, 16, -1.0, 1.0, -1.0, 1.0) == -1 ){
          fprintf( stderr, "stream::send() failure\n" );
          return -1;
      }
+     std::cout << "flushing all packets!\n";
      if( add_stream->flush( ) == -1 ){
          fprintf( stderr, "stream::flush() failure\n" );
          return -1;
@@ -99,8 +103,9 @@ int main(int argc, char **argv)
 
      // We expect "num_iters" aggregated responses from all back-ends
      for( unsigned int i=0; i < num_iters; i++ ){
-
+         std::cout << "receiving packet\n";
          retval = add_stream->recv(&tag, p);
+         std::cout << "received packet\n";
          if( retval == 0 ) {
              //shouldn't be 0, either error or block for data, unless a failure occured
              fprintf( stderr, "stream::recv() returned zero\n" );

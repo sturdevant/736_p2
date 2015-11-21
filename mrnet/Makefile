@@ -1,7 +1,7 @@
-MRNETLIBBASE = $(HOME)/private/mrnet
-MRNETLIBS = $(HOME)/private/mrnet/lib
-MRNETINCLUDE = $(HOME)/private/mrnet/include
-XPLATINCLUDE = $(HOME)/private/mrnet/lib/xplat-5.0.0/include
+MRNETLIBBASE = $(HOME)/public/736/mrnet
+MRNETLIBS = $(HOME)/public/736/mrnet/lib
+MRNETINCLUDE = $(HOME)/public/736/mrnet/include
+XPLATINCLUDE = $(HOME)/public/736/mrnet/lib/xplat-5.0.0/include
 UTILINCLUDE = ../util
 NODESINCLUDE = ../nodes
 CURDIR = $(shell pwd)

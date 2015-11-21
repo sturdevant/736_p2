@@ -3,14 +3,14 @@
 Request::Request(RequestType type) {
    t = type;
    pt = NULL;
-   id = INVALID_ID;
+   id = REQUEST_ID_INVALID;
 }
 
 void Request::setID(unsigned long newID) {
    id = newID;
 }
 
-void Request::setPoint(double* newPt) {
+void Request::setPoint(Point* newPt) {
    pt = newPt;
 }
 
@@ -18,7 +18,7 @@ RequestType Request::getRequestType() {
    return t;
 }
 
-double* Request::getPoint() {
+Point* Request::getPoint() {
    return pt;
 }
 
