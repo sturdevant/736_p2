@@ -5,6 +5,10 @@ Cell::Cell() {
    assigned = false;
 }
 
+Cell::~Cell() {
+   std::cout << "Cell deleted!\n";
+}
+
 bool Cell::isAssigned() {
    return assigned;
 }

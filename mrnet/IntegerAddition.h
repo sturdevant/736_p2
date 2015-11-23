@@ -10,6 +10,10 @@
 #include "mrnet/Types.h"
 
 typedef enum { PROT_EXIT=FirstApplicationTag, 
+               PROT_INIT,
+               PROT_STREAM,
+               PROT_PTREQ,
+               PROT_POLYREQ,
                PROT_SUM,
                PROT_NAME} Protocol;
 

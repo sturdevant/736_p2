@@ -6,6 +6,7 @@ class Cell {
 
 public:
    Cell();
+   ~Cell();
    std::vector<Point*>* getPointVector();
    bool isAssigned();
    bool isShadow();

@@ -5,6 +5,7 @@
 
 #include "mrnet/MRNet.h"
 #include "IntegerAddition.h"
+#include "InternalNode.h"
 
 using namespace MRN;
 

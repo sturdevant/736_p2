@@ -7,7 +7,7 @@
  */
 
 InternalNode::InternalNode(unsigned int nDims,
-                           unsigned int nChildren
+                           unsigned int nChildren,
                            double epsilon,
                            double minPts,
                            double removalThreshold,
@@ -18,22 +18,33 @@ InternalNode::InternalNode(unsigned int nDims,
                            double* aMaxes,
                            ReturnCode (*requestFunc)(unsigned int, Request*),
                            ReturnCode (*responseFunc)(Response*),
-                           double** caMins,
-                           double** caMaxes) {
+                           double* caMins,
+                           double* caMaxes) {
    this->dims = nDims;
    this->nChildren = nChildren;
    this->removalThreshold = removalThreshold;
    this->decayFactor = decayFactor;
    this->eps = epsilon;
+   this->maxes = maxes;
    this->mins = mins;
    this->requestFunc = requestFunc;
    this->responseFunc = responseFunc;
    //this.thread = (pthread_t*)malloc(sizeof(pthread_t));
 
-   setLengths(maxes);
+   std::cout << "Assigned " << aMins[0] << " to " << aMaxes[0] << " X\n";
+   std::cout << "Assigned " << aMins[1] << " to " << aMaxes[1] << " Y\n";
+
+   setLengths();
    setDimFactors();
    setMaxIndex();
-   assignOwners(caMins, caMaxes);
+   this->owners = (unsigned int*)malloc(maxIndex * sizeof(unsigned int));
+   //std::cout << "owners\n";
+   assignOwners(aMins, aMaxes, caMins, caMaxes);
+   //std::cout << "returning\n";
+
+   for (unsigned int i = 0; i < nChildren; i++) {
+      std::cout << "Child X bounds: " << caMins[i * dims] << " to " << caMaxes[i * dims] << "\n";
+   }
 
    // TODO: (maybe? maybe not) Need to thread out behavior here. We need to make
    // it so that this can run independently of the caller and can accept
@@ -51,7 +62,8 @@ InternalNode::~InternalNode() {
 
 // TODO: Filter properly for each child.
 bool InternalNode::admitPoint(Point* pt) {
-   return true;
+   std::cout << "Point considered: " << pt->getValue()[0] << ", " << pt->getValue()[1] << "\n";
+   return getPointOwner(pt->getValue()) != nChildren;
 }
 
 /*
@@ -61,7 +73,7 @@ bool InternalNode::admitPoint(Point* pt) {
  * the data on its own.
  */
 ReturnCode InternalNode::addPoint(Request* req) {
-
+   /*
    // Verify that the request was actually the type that this function can
    // handle.
    RequestType t = req->getRequestType();
@@ -73,7 +85,8 @@ ReturnCode InternalNode::addPoint(Request* req) {
    double* pt = req->getPoint();
 
    unsigned int ptOwner = getPointOwner(pt);
-   return (*requestFunc)(ptOwner, req);
+   return (*requestFunc)(ptOwner, req);*/
+   return RETURN_CODE_NO_ERROR;
 }
 
 // TODO: Consider combining query and addPoint.
@@ -83,6 +96,7 @@ ReturnCode InternalNode::addPoint(Request* req) {
 ReturnCode InternalNode::query(Request* req) {
    // Verify that the request was actually the type that this function can
    // handle.
+   /*
    RequestType t = req->getRequestType();
    if (t == REQUEST_TYPE_ADD_POINT || t == REQUEST_TYPE_INVALID) {
       return ERROR_CODE_BAD_REQUEST_TYPE;
@@ -90,7 +104,8 @@ ReturnCode InternalNode::query(Request* req) {
    double* pt = req->getPoint();
 
    unsigned int ptOwner = getPointOwner(pt);
-   return (*requestFunc)(ptOwner, req);
+   return (*requestFunc)(ptOwner, req);*/
+   return RETURN_CODE_NO_ERROR;
 }
 
 /*
@@ -98,7 +113,7 @@ ReturnCode InternalNode::query(Request* req) {
  * its requests, this function is called with the response.
  */
 ReturnCode InternalNode::update(Response* res) {
-
+/*
    ResponseType t = res->getResponseType();
    if (t != RESPONSE_TYPE_ADD_POINT) {
       return RETURN_CODE_NO_ERROR;
@@ -110,7 +125,7 @@ ReturnCode InternalNode::update(Response* res) {
    unsigned long id = res->getID();
 
    unsigned int owner = getPointOwner(pt);
-   std::vector<unsigned int> ptOwners();
+   std::vector<unsigned int> ptOwners;
    getPointOwnerGroup(pt, &ptOwners);
 
    // If there was more than one owner, we need to send this request down the
@@ -122,13 +137,13 @@ ReturnCode InternalNode::update(Response* res) {
       Request* newReq = new Request(REQUEST_TYPE_UPDATE_POINT);
       newReq->setTimeStamp(timestamp);
       newReq->setPoint(pt);
-      newReq->setID(req->getID());
+      newReq->setID(res->getID());
 
       // Set up the return value, hoping for no trouble.
       ReturnCode err = RETURN_CODE_NO_ERROR;
 
       // Go through and send an update request to each of the lower nodes.
-      for (size_type i = 0; i < ptOwners.size(); i++) {
+      for (unsigned int i = 0; i < ptOwners.size(); i++) {
          if (ptOwners[i] != owner) {
             err = (*requestFunc)(ptOwners[i], newReq);
             if (err != RETURN_CODE_NO_ERROR) {
@@ -138,7 +153,7 @@ ReturnCode InternalNode::update(Response* res) {
       }
       delete newReq;
    }
-
+*/
    return RETURN_CODE_NO_ERROR;
 }
 
@@ -201,9 +216,9 @@ void InternalNode::getCellOwnerGroup(unsigned int* whichDims,
          // Check if the list of owners had the new one. If not, add it.
          if (curOwner != nChildren && 
          std::find(uniqueOwners.begin(), uniqueOwners.end(), curOwner) ==
-             unqiueOwners.end()) {
+             uniqueOwners.end()) {
 
-            uniqueOwners.add(curOwner);
+            uniqueOwners.push_back(curOwner);
          }
       }
 
@@ -233,14 +248,14 @@ void InternalNode::getPointOwnerGroup(double* pt, std::vector<unsigned int>& uni
    // Construct an integer representation for the cell that the point is in.
    unsigned int* cell = (unsigned int*)malloc(dims * sizeof(unsigned int));
    for (unsigned int i = 0; i < dims; i++) {
-      cell[i] = (unsigned int)floor((pt[i] - mins[i]) * scale);
+      cell[i] = (unsigned int)floor((pt[i] - mins[i]) / eps);
       whichDims[i] = i;
    }
 
    // Now, begin the recursive calls to find nearby cells.
    getCellOwnerGroup(whichDims, cell, uniqueOwners, dims);
    free(whichDims);
- free(cells);
+   free(cell);
 }
 
 /*
@@ -250,13 +265,13 @@ void InternalNode::getPointOwnerGroup(double* pt, std::vector<unsigned int>& uni
  */
 void InternalNode::setOwner(unsigned int* cell, unsigned int owner) {
    unsigned int index = 0;
-   for (unsigned int i < dims; i++) {
+   for (unsigned int i = 0; i < dims; i++) {
       unsigned int cur = cell[i] * dimFactors[i];
-
+      //std::cout << " cur = " << cur << "\n";
 
       // Check to make sure individual components of cell are within bounds.
-      if (cur >= lengths[i]) {
-         std::cout << "ERROR: setOwner called on invalid point!" << std::endl;
+      if (cur >= lengths[i] * dimFactors[i]) {
+         //std::cout << "ERROR: setOwner called on invalid point (" << cell[0] << ", " << cell[1] << ":" << i << ")!" << std::endl;
          return;
       }
 
@@ -265,12 +280,13 @@ void InternalNode::setOwner(unsigned int* cell, unsigned int owner) {
 
    // If the point wasn't within our box, return a bad value;
    if (index < 0 || index > maxIndex) {
-      std::cout << "ERROR: setOwner called on invalid point!" << std::endl;
+      //std::cout << "ERROR: setOwner called on invalid point (off index)!" << std::endl;
       return;
    }
 
    // We have found the proper index into our 1-dimensional list, so assign the
    // owner there.
+   std::cout << "Setting owner at index " << index << "\n";
    owners[index] = owner;
 }
 
@@ -287,13 +303,15 @@ void InternalNode::assignSubslice(unsigned int* whichDims,
                                   unsigned int* aLengths) {
 
    // Identify which dimension is being fixed.
-   curDim = whichDims[0];
+   unsigned int curDim = whichDims[0];
 
    // If there are no more variable dimensions, begin setting owners.
-   if (nDims == 0) {
+   if (nDims == 1) {
       for (unsigned int i = 0; i < aLengths[curDim]; i++) {
          cell[curDim] = i;
+         //std::cout << "i = " << i << "\n";
          setOwner(cell, owner);
+         //std::cout << "Owner set!\n";
       }
 
    // If there are any more variable dimensions, fix one at a time recursively.
@@ -311,43 +329,74 @@ void InternalNode::assignSubslice(unsigned int* whichDims,
    }
 }
 
-void InternalNode::assignOwners(double** caMins, double** caMaxes) {
+unsigned int max_element_index(unsigned int* arr, unsigned int len) {
+   unsigned int maxi = 0;
+   unsigned int val = arr[0];
+   for (unsigned int i = 1; i < len; i++) {
+      if (arr[i] > val) {
+         val = arr[i];
+         maxi = i;
+      }
+   }
+   return maxi;
+}
+
+void InternalNode::assignOwners(double* aMins, double* aMaxes, double* caMins, double* caMaxes) {
+   //std::cout << "starting...\n";
    unsigned int* aLengths = (unsigned int*)malloc(dims * sizeof(unsigned int));
+   //std::cout << "alengths allocated\n";
    for (unsigned int i = 0; i < dims; i++) {
       aLengths[i] = (unsigned int)ceil((aMaxes[i] - aMins[i]) / eps);
    }
+   //std::cout << "alengths set\n";
    unsigned int largestDim = max_element_index(aLengths, dims);
+   //std::cout << "large dim\n";
    unsigned int dimSize = aLengths[largestDim];//lengths[largestDim];
-   unsigned int curPos = (unsigned int)floor(aMins[largestDim] / eps);
+   //std::cout << "dimsize\n";
+   unsigned int curPos = (unsigned int)floor((aMins[largestDim] - mins[largestDim]) / eps);
+   std::cout << "pos = " << curPos << "\n" ;
    double slicesPerOwner = (double)dimSize / (double)nChildren;
+   //std::cout << "slices computed\n";
    double remainder = 0;
 
    // Create a null-terminated list of dimensions to var across.
    unsigned int* whichDims = (unsigned int*)malloc(dims * sizeof(unsigned int));
+   //std::cout << "dims allocated\n";
    for (unsigned int i = 0; i < dims; i++) {
       whichDims[i] = i;
    }
 
+   //std::cout << "simple dims set\n";
    // We don't want to vary across the dimension being split.
    whichDims[largestDim] = whichDims[dims - 1];
    whichDims[dims - 1] = NULL;
 
+   //std::cout << "recur dims set\n";
    for (unsigned int i = 0; i < dims - 1; i++) {
       for (unsigned int j = 0; j < nChildren; j++) {
-         caMins[j][whichDims[i]] = aMins[whichDims[i]];
-         caMaxes[j][whichDims[i]] = aMaxes[whichDims[i]];
+         //std::cout << i << " " << j << " " << nChildren << " " << caMins << " " << caMaxes << "\n";
+         caMins[j * dims + whichDims[i]] = aMins[whichDims[i]];
+         caMaxes[j * dims + whichDims[i]] = aMaxes[whichDims[i]];
       }
    }
 
+   //std::cout << "non-split ca set\n";
    unsigned int* cell = (unsigned int*)malloc(dims * sizeof(unsigned int));
+   //std::cout << "cells allocated\n";
    for (unsigned int i = 0; i < nChildren; i++) {
+      std::cout << "giving cells to child " << i << "\n";
       // Assign slices to owner and assign cells too.
       unsigned int nSlices = (unsigned int)ceil(slicesPerOwner + remainder);
-      caMins[i][largestDim] = mins[largestDim] + curPos * eps;
-      caMaxes[i][largestDim] = caMins[i][largestDim] + nSlices * eps;
+      std::cout << "num slices = " << nSlices << "\n";
+      unsigned int child = i * dims + largestDim;
+      caMins[child] = mins[largestDim] + curPos * eps;
+      caMaxes[child] = caMins[child] + nSlices * eps;
+      std::cout << "bounds set = " << caMins[child] << " to " << caMaxes[child] << "\n";
       remainder = slicesPerOwner + remainder - nSlices;
+      //std::cout << "remainder = " << remainder << "\n";
       for (unsigned int j = 0; j < nSlices; j++) {
          cell[largestDim] = curPos;
+         //std::cout << "recursion\n";
          assignSubslice(whichDims, cell, i, dims - 1, aLengths);
          curPos++;
       }

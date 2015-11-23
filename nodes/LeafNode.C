@@ -85,6 +85,9 @@ void LeafNode::snapshot(FILE* ptFile, FILE* assignmentFile) {
    for (unsigned int i = 0; i <= maxIndex; i++) { 
 
       indexToDArray(i, d);
+      if (uniqueId == 10) {
+         std::cout << "-->\tSNAPSHOTTING POINT (" << d[0] << ", " << d[1] << ")\n";
+      }
       int flag = 0;
       if (cells[i]->isAssigned()) {
          flag = 1;
@@ -657,27 +660,39 @@ Cell* LeafNode::getPointCell(Point* point) {
 }
 
 void LeafNode::assignPointCell(Point* pt) {
-   
+   //std::cout << "Assigning (" << pt->getValue()[0] << ", " << pt->getValue()[1] << ")\n";
    std::vector<unsigned int> group = getPointIndexGroup(pt);
-   for (unsigned int i = 0; i < group.size(); i++) {
+   //std::cout << "\t\tFound " << group.size() << " points\n";
+   unsigned int gsize = group.size();
+   for (unsigned int i = 0; i < gsize; i++) {
+      //std::cout << "\t\tHandling point " << i << " of " << gsize << "\n";
       unsigned int index = group[i];
       double* subPt = (double*)malloc(dims * sizeof(double));
       indexToDArray(index, subPt);
       Point pt2(subPt, 0, 0);
-      std::vector<Cell*> subGroup = getPointCellGroup(&pt2);
+      std::vector<unsigned int> subGroup = getPointIndexGroup(&pt2);
       for (unsigned int j = 0; j < subGroup.size(); j++) {
-         if (!subGroup[j]->isAssigned()) {
-            subGroup[j]->setFringe(true);
+         //std::cout << "\t\t\tSubgroup pt #" << j << " of " << subGroup.size() << "\n";
+         if (!cells[subGroup[j]]->isAssigned()) {
+            //cells[subGroup[j]]->setFringe(true);
          }
       }
       if (!cells[index]->isAssigned() || cells[index]->isFringe()) {
-         cells[index]->setShadow(true);
+         //cells[index]->setShadow(true);
       }
+      free(subPt);
+      //std::cout << "\t\tStarting next round of points (" << i + 1 << " of " << gsize << ")!\n";
    }
+   std::cout << "\t\tFINISHED POINT CELL\n";
    Cell* c = getPointCell(pt);
    c->setAssigned(true);
    c->setShadow(false);
    c->setFringe(false);
+   if (uniqueId == 10) {
+      if (getPointCell(pt)->isAssigned()) {
+         std::cout << "-->\tPoint assigned!\n";
+      }
+   }
 }
 
 void LeafNode::recursiveAssignSubslice(double* low, double* high, double* cur, unsigned int nDims) {
@@ -696,6 +711,9 @@ void LeafNode::recursiveAssignSubslice(double* low, double* high, double* cur, u
             }
          }
          */
+         if (uniqueId == 10) {
+            std::cout << "-->\tASSINGING POINT TO NODE 10 (" << cur[0] << ", " << cur[1] << ")!\n";
+         }
          assignPointCell(&pt);/*
          std::vector<unsigned int> group = getPointIndexGroup(&pt);
          for (unsigned int i = 0; i < group.size(); i++) {

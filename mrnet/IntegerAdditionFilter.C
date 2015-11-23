@@ -9,24 +9,32 @@
 #include "mrnet/NetworkTopology.h"
 #include "ReturnCode.h"
 #include "Request.h"
-
-using namespace MRN;
+#include "InternalNode.h"
 
 extern "C" {
 
+
+ReturnCode fakeReqFunc(unsigned int, Request*) {
+   std::cout << "Request func called!\n";
+}
+
+ReturnCode fakeResFunc(Response* res) {
+   std::cout << "Response func called!\n";
+}
+
 bool isLeaf = false;
-const Network* network = NULL;
-Stream** streams = NULL;
-Communicator** comms = NULL;
-Rank* childRanks = NULL;
-InternalNode * thisNode;
+const MRN::Network* network = NULL;
+MRN::Stream** streams = NULL;
+MRN::Communicator** comms = NULL;
+MRN::Rank* childRanks = NULL;
+InternalNode* internalNode;
 const char* PointMux_format_string = "%f%f";
-void PointMux(std::vector< PacketPtr >& packets_in,
-              std::vector< PacketPtr >& packets_out,
-              std::vector< PacketPtr >& /* packets_out_reverse */,
+void PointMux(std::vector< MRN::PacketPtr >& packets_in,
+              std::vector< MRN::PacketPtr >& packets_out,
+              std::vector< MRN::PacketPtr >& /* packets_out_reverse */,
               void ** /* client data */,
-		        PacketPtr& /* params */,
-              const TopologyLocalInfo& t)
+		        MRN::PacketPtr& /* params */,
+              const MRN::TopologyLocalInfo& t)
 {
 
    float x, y;
@@ -62,22 +70,50 @@ ReturnCode requestHandler(unsigned int child, Request* req) {
    //delete requestPacket;
 }
 
+// Will have to modify when internal nodes can check assignments
+double axMin, axMax, ayMin, ayMax;
+bool ICareAbout(double x, double y) {
+   if (axMin <= x && x < axMax && ayMin <= y && y < ayMax)
+      return true;
+   return false;
+}
+const char* PointFilter_format_string = "%d %lf %lf";
+void PointFilter(std::vector< MRN::PacketPtr >& packets_in,
+                 std::vector< MRN::PacketPtr >& packets_out,
+                 std::vector< MRN::PacketPtr >&,
+                 void**, MRN::PacketPtr&, const MRN::TopologyLocalInfo& t) {
+   double x, y;
+   int tick;
+   int i;
+   // Only push out packets containing points you care about!
+   for(i = 0; i < packets_in.size(); i++) {
+      packets_in[i]->unpack(PointFilter_format_string, &tick, &x, &y);
+      if (ICareAbout(x, y)) {
+         std::cout << "I care about (" << x << ", " << y;
+         std::cout << ") because my assigned values are: " << axMin;
+         std::cout << " through " << axMax << " and " << ayMin << " through ";
+         std::cout << ayMax << "\n";
+         packets_out.push_back(packets_in[i]);
+      }
+   }
+}
+
 const char * TreeInit_format_string = 
    "%lf %lf %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %lf";
-void TreeInit(std::vector< PacketPtr >& packets_in,
-              std::vector< PacketPtr >& packets_out,
-              std::vector< PacketPtr >& /* packets_out_reverse */,
+void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
+              std::vector< MRN::PacketPtr >& packets_out,
+              std::vector< MRN::PacketPtr >& /* packets_out_reverse */,
               void ** /* client data */,
-		        PacketPtr& /* params */,
-              const TopologyLocalInfo& t)
+		        MRN::PacketPtr& /* params */,
+              const MRN::TopologyLocalInfo& t)
 {
-   const Network* net = t.get_Network();
+   const MRN::Network* net = t.get_Network();
    network = net;
-   NetworkTopology* nTop = net->get_NetworkTopology();
+   MRN::NetworkTopology* nTop = net->get_NetworkTopology();
 
-   NetworkTopology::Node* thisNode = nTop->find_Node(t.get_Rank());
-   const std::set<NetworkTopology::Node*> children = thisNode->get_Children();
-   std::set<NetworkTopology::Node*>::iterator cIt = children.begin();
+   MRN::NetworkTopology::Node* thisNode = nTop->find_Node(t.get_Rank());
+   const std::set<MRN::NetworkTopology::Node*> children = thisNode->get_Children();
+   std::set<MRN::NetworkTopology::Node*>::iterator cIt = children.begin();
   
    int r;
    double minPoints, eps;
@@ -95,28 +131,8 @@ void TreeInit(std::vector< PacketPtr >& packets_in,
                          &axMin, &axMax,
                          &ayMin, &ayMax);
 
-   /* Old packet format, don't think we need filters...
-   packets_in[0]->unpack(TreeInit_format_string,
-                         &upTFilter,
-                         &upSFilter,
-                         &downTFilter,
-                         &xMin, &xMax,
-                         &yMin, &yMax,
-                         &r,
-                         &axMin, &axMax,
-                         &ayMin, &ayMax);
-   */
    int nChildren = thisNode->get_NumChildren();
    
-   /* Don't think we need to create streams/communicators in filter...
-   streams = (Stream**)malloc(sizeof(Stream*) * nChildren);
-   comms = (Communicator**)malloc(sizeof(Communicator*) * nChildren);
-   if (streams == NULL || comms == NULL) {
-      printf("ERROR: Could not allocate streams and communicators!\n");
-   }
-   */
-
-
    // If message isn't intended for this node, ignore it!
    if (r == (int) t.get_Rank()){
       printf("Downstream filter from rank = %d\n", (int)t.get_Rank());
@@ -127,57 +143,63 @@ void TreeInit(std::vector< PacketPtr >& packets_in,
       if (net->is_LocalNodeParent()) {
          printf("\tIs a Parent\n");
          // Make a packet for each child
+         double mins[2], maxes[2], aMins[2], aMaxes[2];
+         
+         mins[0] = xMin;
+         mins[1] = yMin;
+         maxes[0] = xMax;
+         maxes[1] = yMax;
+         aMins[0] = axMin;
+         aMins[1] = ayMin;
+         aMaxes[0] = axMax;
+         aMaxes[1] = ayMax;
+
+         double caMins[nChildren * 2], caMaxes[nChildren * 2];
+         std::cout << &caMins[0] << " " << &caMaxes[0] << "\n";
+         std::cout << "CREATING INTERNAL_NODE " << nChildren << "\n";
+         internalNode = new InternalNode(2, nChildren, eps, minPoints, delthresh, decay, &mins[0], &maxes[0], &aMins[0], &aMaxes[0], &fakeReqFunc, &fakeResFunc, &caMins[0], &caMaxes[0]);
+         std::cout << "Internal Node created! " << caMins[6] << "\n";
+         unsigned int cnum = 0;
          for (; cIt != children.end(); cIt++) {
             // Assign placeholder values until InternalNode's assignment
             // code is done.
-            double caxMin, caxMax, cayMin, cayMax;
             int cr = ((int)(*cIt)->get_Rank());
-            caxMin = -(double)cr;
-            caxMax = (double)cr;
-            cayMin = -(double)cr;
-            cayMax = (double)cr;
-            printf("\tHAS CHILD: %d\n", cr);
+            std::cout << "\tHAS CHILD: " << cr << "\n";
+            std::cout << "Assigning " << caMins[cnum * 2 + 0] << " to " << caMaxes[cnum * 2 + 0] << " X\n";
+            std::cout << "Assigning " << caMins[cnum * 2 + 1] << " to " << caMaxes[cnum * 2 + 1] << " Y\n";
+
             
             // This is quite a packet!
-            PacketPtr new_packet(new Packet(packets_in[0]->get_StreamId(),
+            std::cout << "Packing for child with rank = " << cr << " " << sizeof(cr) << "\n";
+            MRN::PacketPtr new_packet(new MRN::Packet(packets_in[0]->get_StreamId(),
                packets_in[0]->get_Tag(),TreeInit_format_string, eps, minPoints,
-               decay, delthresh, xMin, xMax, yMin, yMax, cr, caxMin, caxMax,
-               cayMin, cayMax));
+               decay, delthresh, xMin, xMax, yMin, yMax, cr, caMins[cnum * 2 + 0], caMaxes[cnum * 2 + 0],
+               caMins[cnum * 2 + 1], caMaxes[cnum * 2 + 1]));
             packets_out.push_back(new_packet);
+            cnum++;
          }
       }
       if (net->is_LocalNodeBackEnd()) {
-         printf("\tBACKEND\n");
+         std::cout << "\tBACKEND RANK = " << r << "\n";
          isLeaf = true;
          // Just send whatever we got to the backend code
-         std::vector<PacketPtr>::iterator it = packets_in.begin();
+         std::vector<MRN::PacketPtr>::iterator it = packets_in.begin();
          packets_out.push_back(*it);
       }
        
    }
 }
 
-const char * IntegerAdd_format_string = "%d";
-void IntegerAdd( std::vector< PacketPtr >& packets_in,
-                 std::vector< PacketPtr >& packets_out,
-                 std::vector< PacketPtr >& /* packets_out_reverse */,
-                 void ** /* client data */,
-		 PacketPtr& /* params */,
-                 const TopologyLocalInfo& )
-{
-   std::cout << "IntegerAdd was called\n";
-    int sum = 0;
-    
-    for( unsigned int i = 0; i < packets_in.size( ); i++ ) {
-        PacketPtr cur_packet = packets_in[i];
-	int val;
-	cur_packet->unpack("%d", &val);
-        sum += val;
+const char* doNothing_format_string = "";
+void doNothing( std::vector< MRN::PacketPtr >& packets_in,
+                std::vector< MRN::PacketPtr >& packets_out,
+                std::vector< MRN::PacketPtr >& /* packets_out_reverse */,
+                void ** /* client data */, MRN::PacketPtr& /* params */,
+                const MRN::TopologyLocalInfo& ) {
+   std::cout << "doNothing was called\n";
+   for( unsigned int i = 0; i < packets_in.size( ); i++ ) {
+        packets_out.push_back( packets_in[i]);
     }
-    
-    PacketPtr new_packet ( new Packet(packets_in[0]->get_StreamId(),
-                                      packets_in[0]->get_Tag(), "%d", sum ) );
-    packets_out.push_back( new_packet );
 }
 
 } /* extern "C" */

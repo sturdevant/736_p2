@@ -27,11 +27,11 @@ public:
                 double* aMaxes,
                 ReturnCode (*requestFunc)(unsigned int, Request*),
                 ReturnCode (*responseFunc)(Response*),
-                double** caMins,
-                double** caMaxes);
+                double* caMins,
+                double* caMaxes);
 
    ~InternalNode();
-   bool admitpoint(Point* pt);
+   bool admitPoint(Point* pt);   
    ReturnCode addPoint(Request* req);
    ReturnCode query(Request* req);
    ReturnCode update(Response* res);
@@ -51,8 +51,9 @@ private:
    void assignSubslice(unsigned int* whichDims,
                        unsigned int* cell,
                        unsigned int owner,
-                       unsigned int nDims);
-   void assignOwners(double** caMins, double** caMaxes);
+                       unsigned int nDims,
+                       unsigned int* aLengths);
+   void assignOwners(double* aMins, double* aMaxes, double* caMins, double* caMaxes);
 
    void setLengths();
    void setDimFactors();
