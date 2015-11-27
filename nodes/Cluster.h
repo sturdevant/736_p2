@@ -15,6 +15,7 @@ class Point;
 class Cluster {
 public:
    Cluster(Point* pt, unsigned long id);
+   Cluster(unsigned long id);
    ~Cluster();
    void addPt(Point* pt);
    int removePt(Point* pt);
@@ -26,15 +27,11 @@ public:
    void moveCheckPoint(Point* oldPt, Point* newPt);
    void removeCheckPoint(int index);
    void removeCheckPoint(Point* pt);
-   //void addMaintainedPoint(Point* pt);
-   //void moveMaintainedPoint(Point* oldPt, Point* newPt);
-   //std::vector<Point*> checkMaintainedPoints(unsigned long time);
 
 private:
    unsigned long ptCount;
    unsigned long id;
    std::vector<Point*> checkPoints;
-   //std::vector<Point*> maintainedPoints;
 
 };
 

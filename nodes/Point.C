@@ -14,6 +14,7 @@ Point::Point(double* vals, double weight, unsigned long timestamp) {
    this->weight = weight;
    this->timestamp = timestamp;
    this->nWeight = weight;
+   this->visited = 0;
 }
 
 Point::Point(Point& p) {
@@ -23,6 +24,7 @@ Point::Point(Point& p) {
    this->val = (double*)malloc(N_DIMENSION * sizeof(double));
    bcopy(p.val, this->val, N_DIMENSION * sizeof(double));
    this->clust = p.clust;
+   this->visited = p.visited;
 }
 
 Point::~Point() {

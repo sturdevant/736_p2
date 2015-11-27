@@ -19,3 +19,11 @@ void Response::setValue(double v) {
 double Response::getValue() {
    return value;
 }
+
+unsigned long Response::getClusterId() {
+   return clusterId;
+}
+
+void Response::setClusterId(unsigned long clustId) {
+   clusterId = clustId;
+}

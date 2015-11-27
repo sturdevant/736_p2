@@ -20,6 +20,9 @@ class LeafNode {
 public:
    LeafNode(unsigned int nDims,
             double epsilon,
+            double minPts,
+            double decay,
+            unsigned long decayRes,
             unsigned int uniqueId,
             double ptRemovalThresh,
             double* mins,
@@ -34,16 +37,25 @@ public:
    void snapshot(FILE* ptFile, FILE* assignmentFile);
 
 private:
-   ReturnCode handleUpdate(Request* req, Response* res);
+   //ReturnCode handleUpdate(Request* req, Response* res);
    ReturnCode handleAdd(Request* req, Response* res);
    ReturnCode handlePoint(Request* req, Response* res);
    ReturnCode handlePolygon(Request* req, Response* res);
+   ReturnCode handleShadowUpdate(Request* req, Response* res);
+   ReturnCode handleClusterReplaceRequest(Request* req, Response* res);
+   void issueClusterReplaceRequest(Cluster* old, Cluster* newClust, Point* pt);
+   void issueShadowUpdateRequest(Point* pt);
    unsigned long getNewClusterId();
+   Cluster* makeNewCluster();
+   Cluster* makeNewClusterWithId(unsigned long id);
+   void deleteCluster(Cluster* clust);
+   void setPointCluster(Point* pt, Cluster* clust);
+   Cluster* lookupClusterId(unsigned long id);
    void makeCluster(Point* pt);
    void addToCluster(Cluster* clust, Point* pt);
    Cluster* mergeClusters(std::vector<Cluster*> clusters, Point* pt);
    void removeFromCluster(Cluster* clust, Point* pt);
-   bool verifyCluster(Cluster* clust, Point* pt);
+   Cluster* verifyCluster(Cluster* clust, Point* pt, unsigned long time);
    double countNeighbors(Point* pt, unsigned long time);
    double addToNeighbors(Point* pt, unsigned long time);
    void replaceClusterFromPoint(Cluster* oldClust, Cluster* newClust, Point* pt);
@@ -80,6 +92,8 @@ private:
    ReturnCode (*requestFunc)(unsigned int, Request*);
    ReturnCode (*responseFunc)(Response*);
    Cell** cells;
-   double eps, epsSqr;
+   double eps, epsSqr, minPts, decay;
+   unsigned long decayRes;
    double ptRemovalThreshold;
+   std::vector<Cluster*> clusterList;
 };

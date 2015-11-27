@@ -12,6 +12,7 @@ InternalNode::InternalNode(unsigned int nDims,
                            double minPts,
                            double removalThreshold,
                            double decayFactor,
+                           unsigned long decayRes,
                            double* mins,
                            double* maxes,
                            double* aMins,
@@ -24,6 +25,7 @@ InternalNode::InternalNode(unsigned int nDims,
    this->nChildren = nChildren;
    this->removalThreshold = removalThreshold;
    this->decayFactor = decayFactor;
+   this->decayRes = decayRes;
    this->eps = epsilon;
    this->maxes = maxes;
    this->mins = mins;
@@ -37,7 +39,7 @@ InternalNode::InternalNode(unsigned int nDims,
    setLengths();
    setDimFactors();
    setMaxIndex();
-   this->owners = (unsigned int*)malloc(maxIndex * sizeof(unsigned int));
+   this->owners = (unsigned int*)malloc((maxIndex + 1) * sizeof(unsigned int));
    //std::cout << "owners\n";
    assignOwners(aMins, aMaxes, caMins, caMaxes);
    //std::cout << "returning\n";
@@ -286,7 +288,7 @@ void InternalNode::setOwner(unsigned int* cell, unsigned int owner) {
 
    // We have found the proper index into our 1-dimensional list, so assign the
    // owner there.
-   std::cout << "Setting owner at index " << index << "\n";
+   //std::cout << "Setting owner at index " << index << "\n";
    owners[index] = owner;
 }
 

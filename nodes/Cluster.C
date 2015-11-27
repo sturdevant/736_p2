@@ -3,7 +3,12 @@
 
 Cluster::Cluster(Point* pt, unsigned long id) {
    this->id = id;
-   this->ptCount = 1;
+   this->ptCount = 0;
+}
+
+Cluster::Cluster(unsigned long id) {
+   this->id = id;
+   this->ptCount = 0;
 }
 
 Cluster::~Cluster() {
@@ -15,21 +20,24 @@ Cluster::~Cluster() {
 double Cluster::getSqrDistToCheckPoint(Point* pt, int* retIndex) {
    double minDistSqr = DBL_MAX;
    int closestIndex = -1;
+   std::cout << "Computing min distance to " << checkPoints.size() << " points!\n";
    for (int i = 0; i < checkPoints.size(); i++) {
       double dSqr = pt->getDistSqr(checkPoints[i]);
+      std::cout << "Got distance from pt " << i << "\n";
       if (dSqr < minDistSqr) {
          minDistSqr = dSqr;
          closestIndex = i;
       }
    }
    if (retIndex != NULL) {
-      return *retIndex = closestIndex;
+      *retIndex = closestIndex;
    }
 
    return minDistSqr;
 }
 
 void Cluster::addCheckPoint(Point* pt) {
+   std::cout << "Checkpoint added!\n";
    checkPoints.push_back(new Point(*pt));
 }
 
@@ -71,12 +79,13 @@ void Cluster::addPt(Point* pt) {
 
 int Cluster::removePt(Point* pt) {
    ptCount--;
+   return ptCount;
    //std::cout << "Cluster now has " << ptCount << " points\n";
-   if (ptCount == 0) {
-      //std::cout << "CLUSTER DELETING SELF...\n";
-      delete this;
-      return -1;
-   }
-   return 0;
+   //if (ptCount == 0) {
+   //   std::cout << "CLUSTER DELETING SELF...\n";
+   //   delete this;
+   //   return -1;
+   //}
+   //return 0;
 }
 

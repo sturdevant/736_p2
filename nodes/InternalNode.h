@@ -21,6 +21,7 @@ public:
                 double minPts,
                 double removalThreshold,
                 double decayFactor,
+                unsigned long decayRes,
                 double* mins,
                 double* maxes,
                 double* aMins, 
@@ -65,6 +66,7 @@ private:
    unsigned int* dimFactors;
    unsigned int dims;
    unsigned int maxIndex;
+   unsigned long decayRes;
    double* mins;
    double* maxes;
    double eps;

@@ -67,6 +67,15 @@ void Failure_Callback(Event* evt, void*) {
        saw_failure = true;
 }
 
+void* listenStart(void* listenArgs) {
+   int rc, tag;
+   PacketPtr p;
+   while(1) {
+      rc = net->recv(&tag, p, &stream);
+   }
+   return NULL;
+}
+
 // Initialize mrnet w/ specified parameters
 void initMRNet(double eps, double minPoints, double decay, double delthresh,
                double xMin, double xMax, double yMin, double yMax) {
@@ -151,6 +160,11 @@ int main(int argc, char** argv) {
    }
    
    initMRNet(.3, 4.0, .95, .1, -1.08, 1.05, -1.07, 1.06);
+   pthread_t* listenThread = (pthread_t*)malloc(sizeof(pthread_t));
+   int retval = pthread_create(listenThread, 
+                               NULL, 
+                               &listenStart, 
+                               NULL);
    logging = 0;
    int i = 2;
    if (!strcmp(argv[i], "-log")) {
@@ -158,7 +172,7 @@ int main(int argc, char** argv) {
       logging = 1;
    }
 
-   int retval, threadCount = 0;
+   int threadCount = 0;
 
    // Allocate an array equal to the largest number of threads possible.
    pthread_t* threads = (pthread_t*)malloc((argc / 2 - 1) * sizeof(pthread_t));

@@ -6,7 +6,6 @@ Cell::Cell() {
 }
 
 Cell::~Cell() {
-   std::cout << "Cell deleted!\n";
 }
 
 bool Cell::isAssigned() {
