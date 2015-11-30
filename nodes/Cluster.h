@@ -18,6 +18,7 @@ public:
    Cluster(unsigned long id);
    ~Cluster();
    void addPt(Point* pt);
+   void printCheckPoints();
    int removePt(Point* pt);
    unsigned long getId() { return id; }
    unsigned long getPtCount() { return ptCount; }

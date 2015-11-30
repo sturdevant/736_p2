@@ -28,7 +28,8 @@ double frand(double fMin, double fMax)
 
 main(int argc, char** argv) {
 
-   srand(time(NULL));
+   //srand(time(NULL));
+   srand(1);
 
    double mins[2];
    mins[0] = -10;
@@ -50,50 +51,96 @@ main(int argc, char** argv) {
 
 
    int nDims = 2;
-   double eps = 2.5;
+   double eps = 1.25;
    double minPts = 3.0;
-   double decay = 0.99;
-   unsigned long decayRes = 20;
+   double decay = 0.995;
+   unsigned long decayRes = 1;
    double decayThreshold = 0.1;
    double caMaxes[2 * nDims];
    double caMins[2 * nDims];
+   double tempMaxes[2 * nDims];
+   double tempMins[2 * nDims];
 
-   InternalNode in(nDims, 2, eps, minPts, decayThreshold, decay, decayRes, &mins[0], &maxes[0], &aMins[0], &aMaxes[0], &requestFunc, &responseFunc, &caMins[0], &caMaxes[0]);
+   InternalNode root(nDims, 2, eps, minPts, decayThreshold, decay, decayRes, 
+      &mins[0], &maxes[0], 
+      &aMins[0], &aMaxes[0], 
+      &requestFunc, &responseFunc, 
+      &caMins[0], &caMaxes[0]);
 
-   for (int i = 0; i < 2; i++) {
+   bcopy(caMaxes, tempMaxes, 2 * nDims * sizeof(double));
+   bcopy(caMins, tempMins, 2 * nDims * sizeof(double));
+
+   InternalNode in1(nDims, 2, eps, minPts, decayThreshold, decay, decayRes, 
+      &mins[0], &maxes[0], 
+      &tempMins[0], &tempMaxes[0], 
+      &requestFunc, &responseFunc, 
+      &caMins[0], &caMaxes[0]);
+
+   /*for (int i = 0; i < 2; i++) {
       std::cout << "Child " << i 
          << "\n\tX: " << caMins[i * nDims + 0] << " to " 
                       << caMaxes[i * nDims + 0] 
          << "\n\tY: " << caMins[i * nDims + 1] << " to " 
                       << caMaxes[i * nDims + 1] << std::endl;
-   }
+   }*/
 
-   LeafNode n(2, eps, minPts, decay, decayRes, 1, decayThreshold, &mins[0], &maxes[0], &caMins[0], &caMaxes[0], &requestFunc, &responseFunc);
+   LeafNode n(2, eps, minPts, decay, decayRes, 1, decayThreshold, 
+      &mins[0], &maxes[0], 
+      &caMins[0], &caMaxes[0], 
+      &requestFunc, &responseFunc);
 
-   LeafNode n2(2, eps, minPts, decay, decayRes, 2, decayThreshold, &mins[0], &maxes[0], &caMins[1 * nDims], &caMaxes[1 * nDims], &requestFunc, &responseFunc);
+   LeafNode n2(2, eps, minPts, decay, decayRes, 2, decayThreshold, 
+      &mins[0], &maxes[0], 
+      &caMins[1 * nDims], &caMaxes[1 * nDims], 
+      &requestFunc, &responseFunc);
+  
+   InternalNode in2(nDims, 2, eps, minPts, decayThreshold, decay, decayRes, 
+      &mins[0], &maxes[0], 
+      &tempMins[1 * nDims], &tempMaxes[1 * nDims], 
+      &requestFunc, &responseFunc, 
+      &caMins[0], &caMaxes[0]);
+
+   LeafNode n3(2, eps, minPts, decay, decayRes, 3, decayThreshold, 
+      &mins[0], &maxes[0], 
+      &caMins[0], &caMaxes[0], 
+      &requestFunc, &responseFunc);
+
+   LeafNode n4(2, eps, minPts, decay, decayRes, 4, decayThreshold, 
+      &mins[0], &maxes[0], 
+      &caMins[1 * nDims], &caMaxes[1 * nDims], 
+      &requestFunc, &responseFunc);
    
    double setCoords[2][5];
 
-   setCoords[0][0] = -1.0;
+   setCoords[0][0] = -1.60;
    setCoords[1][0] = 0;
 
-   setCoords[0][1] = -1.04;
+   setCoords[0][1] = -1.61;
    setCoords[1][1] = 0;
    
-   setCoords[0][2] = -1.05;
+   setCoords[0][2] = -1.62;
    setCoords[1][2] = 0;
    
-   setCoords[0][3] = -1.06;
+   setCoords[0][3] = 1.59;
    setCoords[1][3] = 0;
    
-   setCoords[0][4] = -1.07;
+   setCoords[0][4] = 1.58;
    setCoords[1][4] = 0;
    
-   int runs = 4;
+   setCoords[0][5] = 1.57;
+   setCoords[1][5] = 0;
+   
+   setCoords[0][6] = 0.6;
+   setCoords[1][6] = 0;
+   
+   setCoords[0][7] = -0.63;
+   setCoords[1][7] = 0;
+   
+   int runs = 1000;
    double coords[2];
    for (int i = 0; i < runs; i++) {
-      coords[0] = setCoords[0][i];//frand(-10.0, 10.0);
-      coords[1] = setCoords[1][i];//frand(-10.0, 10.0);
+      coords[0] = frand(-10.0, 10.0);//setCoords[0][i];
+      coords[1] = frand(-10.0, 10.0);//setCoords[1][i];
       Point pt(coords, 1.0, i);
       Request req(REQUEST_TYPE_ADD_POINT);
       Response res;
@@ -101,80 +148,67 @@ main(int argc, char** argv) {
       n.query(&req, &res);
 
       std::cout << "Sending second query!\n";
-      Point pt2(coords, 1.0, i);
-      Request req2(REQUEST_TYPE_ADD_POINT);
-      Response res2;
-      req2.setPoint(&pt2);
+      //Point pt2(coords, 1.0, i);
+      //Request req2(REQUEST_TYPE_ADD_POINT);
+      //Response res2;
+      //req2.setPoint(&pt2);
       //std::cout << "Calling query!\n";
-      n2.query(&req2, &res2);
+      n2.query(&req, &res);
+
+      std::cout << "Sending 3rd query!\n";
+      n3.query(&req, &res);
+
+      std::cout << "Sending 4th query!\n";
+      n4.query(&req, &res);
 
       while (requestList.size() > 0) {
-         std::cout << "Broadcasting request (t = " << i << ")!\n";
+         std::cout << "\nBroadcasting request (t = " << i << ")!\n\n";
          n.query(requestList[0], &res);
-         std::cout << "\tFirst response!\n";
+         std::cout << "\n\tFirst response!\n\n";
          n2.query(requestList[0], &res);
-         std::cout << "\tSecond response!\n";
+         std::cout << "\n\tSecond response!\n\n";
+         n3.query(requestList[0], &res);
+         std::cout << "\n\tThird response!\n\n";
+         n4.query(requestList[0], &res);
+         std::cout << "\n\tFourth response!\n\n";
          requestList.erase(requestList.begin());
       }
 
 
    }
 
-/*
-   double* vals = (double*)malloc(2 * sizeof(double));
-   vals[0] = 0;
-   vals[1] = 0;
-   double* vals2 = (double*)malloc(2 * sizeof(double));
-   vals2[0] = 1.5;
-   vals2[1] = 0.0;
-   double* vals3 = (double*)malloc(2 * sizeof(double));
-   vals3[0] = .75;
-   vals3[1] = 0;
+   std::cout << "Taking grid!\n";
+   
+   FILE* gridFile = fopen("grid", "w");
+   for (coords[0] = -10; coords[0] < 10; coords[0] += 0.2) {
+      for (coords[1] = -10; coords[1] < 10; coords[1] += 0.2) {
+         Request getReq(REQUEST_TYPE_POINT_DATA);
+         Point pt(coords, 1.0, runs);
+         getReq.setPoint(&pt);
+         Response res;
+         res.setClusterId(0);
+         n.query(&getReq, &res);
+         unsigned long clustId = res.getClusterId();
+         fprintf(gridFile, "%ld:%lf,%lf,%ld\n", runs, coords[0], coords[1], clustId);
+         res.setClusterId(0);
+         n2.query(&getReq, &res);
+         clustId = res.getClusterId();
+         fprintf(gridFile, "%ld:%lf,%lf,%ld\n", runs, coords[0], coords[1], clustId);
+         res.setClusterId(0);
+         n3.query(&getReq, &res);
+         clustId = res.getClusterId();
+         fprintf(gridFile, "%ld:%lf,%lf,%ld\n", runs, coords[0], coords[1], clustId);
+         res.setClusterId(0);
+         n4.query(&getReq, &res);
+         clustId = res.getClusterId();
+         fprintf(gridFile, "%ld:%lf,%lf,%ld\n", runs, coords[0], coords[1], clustId);
+      }
+   }
+   fclose(gridFile);
+         
+   std::cout << "Taking snapshot!\n";
 
-   std::cout << "Setting up point...\n";
-
-   Point::setDecayFactor(.9, 1);
-   Point::setEpsilon(1.0);
-
-   Point pt3(&vals3[0], 1.0, 14);
-   Point pt2(&vals2[0], 1.0, 12);
-   Point pt(&vals[0], 1.0, 10);
-
-   std::cout << "Setting up requests...\n";
-
-   Request addReq(REQUEST_TYPE_ADD_POINT), getReq(REQUEST_TYPE_POINT_DATA);
-   Request addReq2(REQUEST_TYPE_ADD_POINT);
-   Request addReq3(REQUEST_TYPE_ADD_POINT);
-
-   std::cout << "Setting up add request...\n";
-
-   addReq.setPoint(&pt);
-   addReq2.setPoint(&pt2);
-   addReq3.setPoint(&pt3);
-
-   std::cout << "Setting up get request...\n";
-
-   getReq.setPoint(&pt);
-
-   std::cout << "Sending add query...\n";
-
-   Response res;
-   n.query(&addReq, &res);
-   n.query(&addReq, &res);
-   n.query(&addReq, &res);
-   n.query(&addReq, &res);
-   n.query(&addReq, &res);
-   n.query(&addReq2, &res);
-   n.query(&addReq2, &res);
-   n.query(&addReq2, &res);
-   n.query(&addReq2, &res);
-   n.query(&addReq2, &res);
-   n.query(&addReq3, &res);
-
-   std::cout << "Sending get query...\n";
-   n.query(&getReq, &res);
-*/
-   FILE* file = fopen("snapshot", "w");
+   FILE* file = fopen("snapshot1", "w");
    FILE* file2 = fopen("assigns", "w");
    n.snapshot(file, file2);
    fclose(file);
@@ -186,36 +220,18 @@ main(int argc, char** argv) {
    fclose(file);
    fclose(file2);
 
-   /*
-   FILE* gridFile = fopen("grid", "w");
-   for (coords[0] = -10; coords[0] < 10; coords[0] += 0.4) {
-      for (coords[1] = -10; coords[1] < 10; coords[1] += 0.4) {
-         Request getReq(REQUEST_TYPE_POINT_DATA);
-         Point pt(coords, 1.0, runs);
-         getReq.setPoint(&pt);
-         Response res;
-         n.query(&getReq, &res);
-         unsigned long clustId = res.getClusterId();
-         fprintf(gridFile, "%ld:%lf,%lf,%ld\n", runs, coords[0], coords[1], clustId);
-      }
-   }
-   fclose(gridFile);
+   file = fopen("snapshot3", "w");
+   file2 = fopen("assigns3", "w");
+   n3.snapshot(file, file2);
+   fclose(file);
+   fclose(file2);
 
-   gridFile = fopen("grid2", "w");
-   for (coords[0] = -10; coords[0] < 10; coords[0] += 0.4) {
-      for (coords[1] = -10; coords[1] < 10; coords[1] += 0.4) {
-         Request getReq(REQUEST_TYPE_POINT_DATA);
-         Point pt(coords, 1.0, runs);
-         getReq.setPoint(&pt);
-         Response res;
-         n2.query(&getReq, &res);
-         unsigned long clustId = res.getClusterId();
-         fprintf(gridFile, "%ld:%lf,%lf,%ld\n", runs, coords[0], coords[1], clustId);
-      }
-   }
-   fclose(gridFile);
-   */
-         
+   file = fopen("snapshot4", "w");
+   file2 = fopen("assigns4", "w");
+   n4.snapshot(file, file2);
+   fclose(file);
+   fclose(file2);
+   //*/ 
    //std::cout << "Resulting point weight = " << res.getValue() << std::endl;
 
    return 0;

@@ -17,13 +17,21 @@ Cluster::~Cluster() {
    }
 }
 
+void Cluster::printCheckPoints() {
+   std::cout << "Cluster " << id << " CHECKPOINTS:\n";
+   for (unsigned int i = 0; i < checkPoints.size(); i++) {
+      Point* pt = checkPoints[i];
+      std::cout << "\t" << pt->getValue()[0] << ", " << pt->getValue()[1] << "\n";
+   }
+}
+
 double Cluster::getSqrDistToCheckPoint(Point* pt, int* retIndex) {
    double minDistSqr = DBL_MAX;
    int closestIndex = -1;
-   std::cout << "Computing min distance to " << checkPoints.size() << " points!\n";
+   //std::cout << "Computing min distance to " << checkPoints.size() << " points!\n";
    for (int i = 0; i < checkPoints.size(); i++) {
       double dSqr = pt->getDistSqr(checkPoints[i]);
-      std::cout << "Got distance from pt " << i << "\n";
+      //std::cout << "Got distance from pt " << i << "\n";
       if (dSqr < minDistSqr) {
          minDistSqr = dSqr;
          closestIndex = i;

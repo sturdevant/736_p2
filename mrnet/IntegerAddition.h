@@ -15,6 +15,7 @@ typedef enum { PROT_EXIT=FirstApplicationTag,
                PROT_PTREQ,
                PROT_POLYREQ,
                PROT_SUM,
-               PROT_NAME} Protocol;
+               PROT_NAME,
+               PROT_REQUEST} Protocol;
 
 #endif /* integer_addition_h */

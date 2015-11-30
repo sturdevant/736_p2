@@ -6,10 +6,22 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include <queue>
 #include "Request.h"
 #include "Response.h"
 #include "ReturnCode.h"
 #include "Point.h"
+
+typedef struct QIndex {
+   unsigned int index;
+   double dist;
+} QIndex;
+
+struct QIndexCompare : public std::binary_function<QIndex&, QIndex&, bool> {
+   bool operator()(const QIndex& qi1, const QIndex& qi2) const {
+      return qi1.dist > qi2.dist;
+   }
+};
 
 class InternalNode {
 
@@ -36,6 +48,7 @@ public:
    ReturnCode addPoint(Request* req);
    ReturnCode query(Request* req);
    ReturnCode update(Response* res);
+   void snapshot(FILE* assignmentFile);
 
 private:
    
@@ -47,7 +60,7 @@ private:
                           unsigned int* cell,
                           std::vector<unsigned int>& uniqueOwners,
                           unsigned int nDims);
-
+   void indexToDArray(unsigned int index, double* d);
    void setOwner(unsigned int* cell, unsigned int owner);
    void assignSubslice(unsigned int* whichDims,
                        unsigned int* cell,
@@ -73,7 +86,8 @@ private:
    double removalThreshold;
    double decayFactor;
    double minPts;
-
+   std::priority_queue<QIndex, std::vector<QIndex>, QIndexCompare>** childIndexes;
+   Point** childCenters;
    pthread_t thread;
    ReturnCode (*requestFunc)(unsigned int, Request*);
    ReturnCode (*responseFunc)(Response*);

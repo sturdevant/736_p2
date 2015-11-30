@@ -116,17 +116,11 @@ double Point::getDistSqr(Point* pt) {
 }
 
 void Point::setDecayFactor(double newFactor, unsigned long newRes) {
-   if (decayFactor >= 0 && newFactor != decayFactor) {
-      std::cout << "Decay factor reset!\n";
-   }
    decayFactor = newFactor;
    decayRes = newRes;
 }
 
 void Point::setEpsilon(double newEps) {
-   if (eps >= 0 && newEps != eps) {
-      std::cout << "Epsilon reset!\n";
-   }
    eps = newEps;
    epsSqr = newEps * newEps;
 }

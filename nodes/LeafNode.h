@@ -47,8 +47,10 @@ private:
    void issueShadowUpdateRequest(Point* pt);
    unsigned long getNewClusterId();
    Cluster* makeNewCluster();
+   bool isPointBorder(Point* pt);
    Cluster* makeNewClusterWithId(unsigned long id);
    void deleteCluster(Cluster* clust);
+   Point* getLocalPoint(Point* pt);
    void setPointCluster(Point* pt, Cluster* clust);
    Cluster* lookupClusterId(unsigned long id);
    void makeCluster(Point* pt);

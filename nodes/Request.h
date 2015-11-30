@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #define REQUEST_ID_INVALID ULLONG_MAX
+#define REQUEST_FORMAT_STRING "%ld %ld %ld %lf %lf %lf %lf %ld %ld"
 
 class Request {
 public:
@@ -22,6 +23,14 @@ public:
    void setLong2(unsigned long l);
    unsigned long getLong1();
    unsigned long getLong2();
+   void unpack(unsigned long* uId,
+               unsigned long* uType,
+               unsigned long* uTime,
+               double* uVal,
+               double* uWeight,
+               double* uNWeight,
+               unsigned long* ul1,
+               unsigned long* ul2);
 
 private:
    RequestType t;

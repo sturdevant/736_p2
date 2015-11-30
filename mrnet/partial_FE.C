@@ -27,8 +27,6 @@ void* startPolygonQueryThread(void* filename);
 
 // These globals will be set before any threads and are read-only, making them
 // safe for reading in each thread.
-struct hostent* host;
-int portnum;
 double ticksPerSec;
 int logging;
 unsigned long tick;
@@ -69,20 +67,45 @@ void Failure_Callback(Event* evt, void*) {
 
 void* listenStart(void* listenArgs) {
    int rc, tag;
+   Stream* stream;
    PacketPtr p;
    while(1) {
       rc = net->recv(&tag, p, &stream);
+      if (rc < 0) 
+         std::cout << "Error receiving in frontend listenStart\n";
+      else {
+         std::cout << "Successfully received in frontend listenStart\n";
+         /*MRN::PacketPtr bouncePckt(
+            new MRN::Packet(
+               stream->getId(),
+               PROT_REQUEST,
+               REQUEST_FORMAT_STRING,
+
+            )
+         );*/
+         stream->send(p);
+      }
    }
    return NULL;
 }
 
 // Initialize mrnet w/ specified parameters
-void initMRNet(double eps, double minPoints, double decay, double delthresh,
-               double xMin, double xMax, double yMin, double yMax) {
+void initMRNet(double eps, 
+               double minPoints, 
+               double decay, 
+               double delthresh,
+               double xMin,
+               double xMax, 
+               double yMin, 
+               double yMax) {
    int retval;
-   const char* topology_file = "/u/s/t/sturdeva/public/736/736_p2/mrnet/topology.top";
-   const char* backend_exe = "/u/s/t/sturdeva/public/736/736_p2/mrnet/IntegerAddition_BE";
-   const char* so_file = "/u/s/t/sturdeva/public/736/736_p2/mrnet/IntegerAdditionFilter.so";
+   const char* topology_file = 
+      "/u/s/t/sturdeva/public/736/736_p2/mrnet/topology.top";
+   const char* backend_exe = 
+      "/u/s/t/sturdeva/public/736/736_p2/mrnet/IntegerAddition_BE";
+   const char* so_file = 
+      "/u/s/t/sturdeva/public/736/736_p2/mrnet/IntegerAdditionFilter.so";
+   
    const char* dummy_argv = NULL;
 
    net = Network::CreateNetworkFE(topology_file, backend_exe, &dummy_argv);
@@ -122,20 +145,28 @@ void initMRNet(double eps, double minPoints, double decay, double delthresh,
    double axMax = xMax;
    double ayMin = yMin;
    double ayMax = yMax;
+
    std::cout << "X: " << axMin << " to " << axMax << "\n";
    std::cout << "Y: " << ayMin << " to " << ayMax << "\n";
    comm_BC = net->get_BroadcastCommunicator();
-   stream_Stream = net->new_Stream(comm_BC, filterIds[0], SFILTER_DONTWAIT,
+
+   stream_Stream = net->new_Stream(comm_BC, 
+                                   filterIds[0], 
+                                   SFILTER_DONTWAIT,
                                    filterIds[2]);
-   Stream* init_Stream = net->new_Stream(comm_BC, filterIds[0],
-                                         SFILTER_WAITFORALL, filterIds[1]);
+
+   Stream* init_Stream = net->new_Stream(comm_BC, 
+                                         filterIds[0],
+                                         SFILTER_DONTWAIT, 
+                                         filterIds[1]);
+
    int r = net->get_NetworkTopology()->get_Root()->get_Rank();
    int tag = PROT_INIT;
    cout << "sending initialization packet!\n";
    if (init_Stream->send(tag,
-      "%lf %lf %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %lf", eps, minPoints, 
-      decay, delthresh, xMin, xMax, yMin, yMax, r, xMin, xMax, yMin, yMax)
-      == -1 ){
+       "%lf %lf %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %lf", eps, minPoints, 
+       decay, delthresh, xMin, xMax, yMin, yMax, r, xMin, xMax, yMin, yMax)
+       == -1 ) {
       fprintf(stderr, "stream::send() failure\n");
       exit(-1);
    }
@@ -145,9 +176,12 @@ void initMRNet(double eps, double minPoints, double decay, double delthresh,
       fprintf(stderr, "stream::flush() failure\n");
       exit(-1);
    }
-   cout << "deleting initialization stream!\n";
-   delete init_Stream;
+
+   //cout << "deleting initialization stream!\n";
+   //delete init_Stream;
 }
+
+
 int main(int argc, char** argv) {
    if (argc < 4) {
       printf("usage: client <timestep> [-log] {[<service type> <filename> [<logfilename>], [...]...}\n");
@@ -159,7 +193,15 @@ int main(int argc, char** argv) {
       exit(-1);
    }
    
-   initMRNet(.3, 4.0, .95, .1, -1.08, 1.05, -1.07, 1.06);
+   double eps = 2.5;
+   double minPts = 3.0;
+   double decay = 0.99;
+   double delthresh = 0.1;
+   double xMin = -10.0;
+   double xMax = 10.0;
+   double yMin = -10.0;
+   double yMax = 10.0;
+   initMRNet(eps, minPts, decay, delthresh, xMin, xMax, yMin, yMax);
    pthread_t* listenThread = (pthread_t*)malloc(sizeof(pthread_t));
    int retval = pthread_create(listenThread, 
                                NULL, 
@@ -244,9 +286,6 @@ int main(int argc, char** argv) {
 
    // TODO: Timekeeping/cv_signal
    while (1) {
-      if (!(tick % 5)) {
-         std::cout << "Tick = " << tick << std::endl;
-      }
       retval = sleep(1);
       if (retval != 0) {
          printf("ERROR: Failed to sleep!\n");
@@ -301,7 +340,6 @@ void* startPointQueryThread(void* arg) {
    }
 
    while(!in.eof()) {
-      std::cout << "Found another line!\n";
       if (!in.getline(buf, N_DIMENSIONS * DIM_BUFFER_SIZE - 1)) {
          continue;
       }
@@ -375,7 +413,6 @@ void* startStreamThread(void* arg) {
    pthread_t loggerThread;
 
    while(!in.eof()) {
-      std::cout << "Found another line!\n";
       if (!in.getline(buf, N_DIMENSIONS * DIM_BUFFER_SIZE - 1)) {
          continue;
       }
