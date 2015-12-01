@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <string.h>
 #include <stdlib.h>
+#include <iostream>
 
 typedef struct memslab_t {
    memslab_t* next;

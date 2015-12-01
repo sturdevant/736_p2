@@ -68,7 +68,7 @@ unsigned long TimedQueue::remove(void* element) {
    memslab_t* cur = usedHead;
    int found = 0;
    while (cur != tail && !found) {
-      found = !memcmp(element, cur->data, esize);
+      found = !memcmp(element, &(cur->data), esize);
       if (!found) {
          prev = cur;
          cur = cur->next;
@@ -76,7 +76,7 @@ unsigned long TimedQueue::remove(void* element) {
    }
 
    if (!found) {
-      if (memcmp(element, cur->data, esize)) {
+      if (memcmp(element, &(cur->data), esize)) {
          throw "ERROR: Queue did not contain point!\n";
       }
    }
@@ -136,7 +136,7 @@ void TimedQueue::add(void* element) {
    pthread_mutex_unlock(&freeLock);
    
    slab->entryTime = t;
-   bcopy(element, slab->data, esize);
+   bcopy(element, &(slab->data), esize);
 
    pthread_mutex_lock(&usedLock);
    slab->next = NULL;

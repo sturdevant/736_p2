@@ -9,6 +9,8 @@
 #include <netdb.h>
 #include <string>
 #include "mrnet/MRNet.h"
+#include "Response.h"
+#include "Request.h"
 #include "IntegerAddition.h"
 
 using namespace std;
@@ -16,10 +18,13 @@ using namespace MRN;
 
 #define N_DIMENSIONS 2
 #define DIM_BUFFER_SIZE 512
+#define SNAPSHOT_INTERVAL 25000000
+
 
 Network * net;
 Communicator* comm_BC; 
 Stream* stream_Stream;
+TimedQueue responseQueue(sizeof(unsigned long), 20000);
 
 void* startPointQueryThread(void* filename);
 void* startStreamThread(void* filename);
@@ -27,9 +32,20 @@ void* startPolygonQueryThread(void* filename);
 
 // These globals will be set before any threads and are read-only, making them
 // safe for reading in each thread.
-double ticksPerSec;
+unsigned long ticksPerSec = 1000000;
 int logging;
-unsigned long tick;
+unsigned long tick = 1448302260;
+unsigned long tickResolution = 5000;
+unsigned long nextSnapshotTime = tick + SNAPSHOT_INTERVAL;
+
+double eps = 2.5;
+double minPts = 3.0;
+double decayFactor = 0.99;
+double delthresh = 0.05;
+double xMin = -180.0;
+double xMax = 180.0;
+double yMin = -90.0;
+double yMax = 90.0;
 
 pthread_mutex_t timeLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t timeCond = PTHREAD_COND_INITIALIZER;
@@ -39,21 +55,53 @@ typedef struct threadargs {
    void* output;
 } threadargs;
 
+unsigned long getNewRequestId() {
+   static unsigned long nextReqId = 0;
+   nextReqId++;
+   return nextReqId;
+}
+
+void frontEndSnapshotRequest() {
+   std::cout << "Getting snapshot at " << tick / tickResolution << "\n";
+   unsigned long id = getNewRequestId();
+   if (stream_Stream->send(
+         PROT_REQUEST, REQUEST_FORMAT_STRING, 
+         id, REQUEST_TYPE_SNAPSHOT, tick / tickResolution, 0.0, 0.0, 1.0, 0.0, 0, 0
+       ) 
+       == -1) {
+      std::cout << "Error in sending snapshot request\n";
+   }
+   if (stream_Stream->flush() == -1)
+      std::cout << "Error in flushing stream\n";
+   //*/
+}
+
 void frontEndPointRequest(double* pt) {
    std::cout << "Read point to request at time " << tick << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
-   int tag = PROT_PTREQ;
-   if (stream_Stream->send(tag, "%d %lf %lf", tick, pt[0], pt[1]) == -1)
+   unsigned long id = getNewRequestId();
+   unsigned long* idPtr = &id;
+   responseQueue.add(idPtr);
+   if (stream_Stream->send(
+         PROT_REQUEST, REQUEST_FORMAT_STRING, 
+         id, REQUEST_TYPE_POINT_DATA, tick / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
+       ) 
+       == -1) {
       std::cout << "Error in sending point request\n";
+   }
    if (stream_Stream->flush() == -1)
       std::cout << "Error in flushing stream\n";
 }
 
 void frontEndPointStream(double* pt) {
    std::cout << "Read point to stream at time " << tick << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
-   int tag = PROT_STREAM;
-   std::cout << "Sending stream point downstream!\n";
-   if (stream_Stream->send(tag, "%d %lf %lf", tick, pt[0], pt[1]) == -1)
+   unsigned long id = getNewRequestId();
+   if (stream_Stream->send(
+         PROT_REQUEST, REQUEST_FORMAT_STRING, 
+         id, REQUEST_TYPE_ADD_POINT, tick / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
+       ) 
+       == -1) {
       std::cout << "Error in sending stream point\n";
+   }
    if (stream_Stream->flush() == -1)
       std::cout << "Error in flushing stream\n";
 }
@@ -69,21 +117,36 @@ void* listenStart(void* listenArgs) {
    int rc, tag;
    Stream* stream;
    PacketPtr p;
+   double x, y, w, nw;
+   unsigned long id, type, time, l1, l2, clustId;
    while(1) {
       rc = net->recv(&tag, p, &stream);
       if (rc < 0) 
          std::cout << "Error receiving in frontend listenStart\n";
       else {
-         std::cout << "Successfully received in frontend listenStart\n";
-         /*MRN::PacketPtr bouncePckt(
-            new MRN::Packet(
-               stream->getId(),
-               PROT_REQUEST,
-               REQUEST_FORMAT_STRING,
+         std::cout << "Successfully received in frontend\n";
+         if (tag == PROT_REQUEST) {
+               
+            p->unpack(
+               REQUEST_FORMAT_STRING, 
+               &id, &type, &time, &x, &y, &w, &nw, &l1, &l2
+            );
 
-            )
-         );*/
-         stream->send(p);
+            MRN::PacketPtr pOut(
+               new MRN::Packet( 
+                  stream->get_Id(), 
+                  PROT_REQUEST, REQUEST_FORMAT_STRING, 
+                  id, type, time, x, y, w, nw, l1, l2 
+               )
+            );
+            stream->send(pOut);
+         } else if (tag == PROT_RESPONSE) {
+            p->unpack(
+               RESPONSE_FORMAT_STRING,
+               &id, &type, &time, &nw, &clustId
+            );
+            std::cout << "Front end got response after " << responseQueue.remove(&id) << " nanoseconds!\n";
+         }
       }
    }
    return NULL;
@@ -164,8 +227,9 @@ void initMRNet(double eps,
    int tag = PROT_INIT;
    cout << "sending initialization packet!\n";
    if (init_Stream->send(tag,
-       "%lf %lf %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %lf", eps, minPoints, 
-       decay, delthresh, xMin, xMax, yMin, yMax, r, xMin, xMax, yMin, yMax)
+       "%lf %lf %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %lf %d", eps, minPoints, 
+       decay, delthresh, xMin, xMax, yMin, yMax, r, xMin, xMax, yMin, yMax, 
+       stream_Stream->get_Id())
        == -1 ) {
       fprintf(stderr, "stream::send() failure\n");
       exit(-1);
@@ -193,15 +257,7 @@ int main(int argc, char** argv) {
       exit(-1);
    }
    
-   double eps = 2.5;
-   double minPts = 3.0;
-   double decay = 0.99;
-   double delthresh = 0.1;
-   double xMin = -10.0;
-   double xMax = 10.0;
-   double yMin = -10.0;
-   double yMax = 10.0;
-   initMRNet(eps, minPts, decay, delthresh, xMin, xMax, yMin, yMax);
+   initMRNet(eps, minPts, decayFactor, delthresh, xMin, xMax, yMin, yMax);
    pthread_t* listenThread = (pthread_t*)malloc(sizeof(pthread_t));
    int retval = pthread_create(listenThread, 
                                NULL, 
@@ -291,9 +347,14 @@ int main(int argc, char** argv) {
          printf("ERROR: Failed to sleep!\n");
       }
       pthread_mutex_lock(&timeLock);
-      tick++;
+      tick += ticksPerSec;
       pthread_cond_broadcast(&timeCond);
       pthread_mutex_unlock(&timeLock);
+      std::cout << "Tick = " << tick << "\n";
+      if (tick >= nextSnapshotTime) {
+         frontEndSnapshotRequest();
+         nextSnapshotTime += SNAPSHOT_INTERVAL;
+      }
    }
 
    // Wait for each of the child threads to finish.
@@ -349,7 +410,7 @@ void* startPointQueryThread(void* arg) {
         
          // This is a timestamp, so we may need to wait.
          unsigned long t = atol(&buf[1]);
-         std::cout << "Timestamp found: " << t << std::endl;
+         //std::cout << "Timestamp found: " << t << std::endl;
          pthread_mutex_lock(&timeLock);
          while (t > tick) {
             // This timestamp hasn't come yet, so we need to go to sleep.

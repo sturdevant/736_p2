@@ -10,7 +10,7 @@ Request::Request(RequestType type) {
 
 Request::Request(RequestType type, Point* pt, unsigned long l1, unsigned long l2) {
    t = type;
-   this->pt = pt;
+   this->pt = new Point(*pt);
    id = REQUEST_ID_INVALID;
    long1 = l1;
    long2 = l2;
@@ -18,10 +18,16 @@ Request::Request(RequestType type, Point* pt, unsigned long l1, unsigned long l2
 
 Request::Request(Request* req) {
    t = req->t;
-   pt = req->pt;
+   pt = new Point(*(req->pt));
    id = REQUEST_ID_INVALID;
    long1 = req->long1;
    long2 = req->long2;
+}
+
+Request::~Request() {
+   if (pt != NULL) {
+      delete pt;
+   }
 }
 
 void Request::unpack(unsigned long* uId,
@@ -47,7 +53,10 @@ void Request::setID(unsigned long newID) {
 }
 
 void Request::setPoint(Point* newPt) {
-   pt = newPt;
+   if (pt != NULL) {
+      delete pt;
+   }
+   pt = new Point(*newPt);
 }
 
 RequestType Request::getRequestType() {

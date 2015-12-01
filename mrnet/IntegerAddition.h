@@ -11,11 +11,12 @@
 
 typedef enum { PROT_EXIT=FirstApplicationTag, 
                PROT_INIT,
-               PROT_STREAM,
-               PROT_PTREQ,
-               PROT_POLYREQ,
-               PROT_SUM,
-               PROT_NAME,
-               PROT_REQUEST} Protocol;
+               //PROT_STREAM,
+               //PROT_PTREQ,
+               //PROT_POLYREQ,
+               //PROT_SUM,
+               //PROT_NAME,
+               PROT_REQUEST,
+               PROT_RESPONSE} Protocol;
 
 #endif /* integer_addition_h */

@@ -28,6 +28,7 @@ public:
    void moveCheckPoint(Point* oldPt, Point* newPt);
    void removeCheckPoint(int index);
    void removeCheckPoint(Point* pt);
+   std::vector<Point*>* getCheckPoints() { return &checkPoints; }
 
 private:
    unsigned long ptCount;

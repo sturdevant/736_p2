@@ -37,7 +37,7 @@ public:
    void snapshot(FILE* ptFile, FILE* assignmentFile);
 
 private:
-   //ReturnCode handleUpdate(Request* req, Response* res);
+   ReturnCode handleSnapshot(Request* req, Response* res);
    ReturnCode handleAdd(Request* req, Response* res);
    ReturnCode handlePoint(Request* req, Response* res);
    ReturnCode handlePolygon(Request* req, Response* res);
@@ -50,19 +50,20 @@ private:
    bool isPointBorder(Point* pt);
    Cluster* makeNewClusterWithId(unsigned long id);
    void deleteCluster(Cluster* clust);
-   Point* getLocalPoint(Point* pt);
+   Point* getLocalPoint(Point* pt, unsigned long time);
    void setPointCluster(Point* pt, Cluster* clust);
    Cluster* lookupClusterId(unsigned long id);
    void makeCluster(Point* pt);
    void addToCluster(Cluster* clust, Point* pt);
    Cluster* mergeClusters(std::vector<Cluster*> clusters, Point* pt);
    void removeFromCluster(Cluster* clust, Point* pt);
+   void renewClusterCheckPoints(Cluster* clust);
    Cluster* verifyCluster(Cluster* clust, Point* pt, unsigned long time);
    double countNeighbors(Point* pt, unsigned long time);
    double addToNeighbors(Point* pt, unsigned long time);
    void replaceClusterFromPoint(Cluster* oldClust, Cluster* newClust, Point* pt);
    std::vector<Cluster*> getNeighborClusters(Point* pt, unsigned long time);
-   void getPointNeighborList(Point* point, std::vector<std::vector<Point*>*>& neighborList);
+   void getPointNeighborList(Point* point, std::vector<std::vector<Point*>*>& neighborList, unsigned long time);
    void getPointOwnerGroup(Point* point, std::vector<unsigned int>& uniqueOwners);
    unsigned int getCellIndex(unsigned int* cell);
    Cell* getCell(unsigned int* cell);

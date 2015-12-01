@@ -14,6 +14,7 @@ public:
    Request(RequestType type);
    Request(RequestType type, Point* pt, unsigned long l1, unsigned long l2);
    Request(Request* req);
+   ~Request();
    void setID(unsigned long newID);
    void setPoint(Point* newPt);
    RequestType getRequestType();

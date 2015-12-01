@@ -9,6 +9,7 @@
 #include "mrnet/NetworkTopology.h"
 #include "ReturnCode.h"
 #include "Request.h"
+#include "RequestType.h"
 #include "InternalNode.h"
 
 extern "C" {
@@ -31,17 +32,17 @@ MRN::Rank* childRanks = NULL;
 InternalNode* internalNode;
 
 // Will have to modify when internal nodes can check assignments
-const char* PointFilter_format_string = "%d %lf %lf";
+const char* PointFilter_format_string = REQUEST_FORMAT_STRING;
 void PointFilter(std::vector< MRN::PacketPtr >& packets_in,
                  std::vector< MRN::PacketPtr >& packets_out,
                  std::vector< MRN::PacketPtr >&,
                  void**, MRN::PacketPtr&, const MRN::TopologyLocalInfo& t) {
 
    double* ptArr = new double[2];
-   int tick;
    int i;
    const MRN::Network* net = t.get_Network();
-
+   unsigned long id, type, time, l1, l2;
+   double w, nw;
    if (net->is_LocalNodeBackEnd()) {
       for (i = 0; i < packets_in.size(); i++) {
          packets_out.push_back(packets_in[i]);
@@ -51,17 +52,33 @@ void PointFilter(std::vector< MRN::PacketPtr >& packets_in,
 
    // Only push out packets containing points you care about!
    for(i = 0; i < packets_in.size(); i++) {
-      packets_in[i]->unpack(PointFilter_format_string, &tick, &ptArr[0], &ptArr[1]);
-      Point::Point* pt = new Point(ptArr, 1, tick);
-      if (internalNode->admitPoint(pt)) {
-         std::cout << "(" << net->get_LocalRank() << ") I care about (" << ptArr[0] << ", " << ptArr[1] << ")\n";
+      packets_in[i]->unpack(
+         PointFilter_format_string, 
+         &id,
+         &type,
+         &time,
+         &ptArr[0], 
+         &ptArr[1],
+         &w,
+         &nw,
+         &l1,
+         &l2
+      );
+
+      Point::Point* pt = new Point(ptArr, 1, time);
+      if (type == REQUEST_TYPE_SNAPSHOT || internalNode->admitPoint(pt)) {
+         if (type == REQUEST_TYPE_SNAPSHOT) {
+            std::cout << "(" << net->get_LocalRank() << ") Got snapshot at " << time << "\n";
+         }
+         //std::cout << "(" << net->get_LocalRank() << ") I care about (" << ptArr[0] << ", " << ptArr[1] << ")\n";
          packets_out.push_back(packets_in[i]);
       }
+      delete pt;
    }
 }
 
-const char * TreeInit_format_string = 
-   "%lf %lf %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %lf";
+const char * TreeInit_format_string =
+   "%lf %lf %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %lf %d";
 void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
               std::vector< MRN::PacketPtr >& packets_out,
               std::vector< MRN::PacketPtr >& /* packets_out_reverse */,
@@ -82,6 +99,7 @@ void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
    double decay, delthresh;
    double xMin, xMax, yMin, yMax;
    double axMin, axMax, ayMin, ayMax;
+   unsigned int resStream;
    packets_in[0]->unpack(TreeInit_format_string,
                          &eps,
                          &minPoints,
@@ -91,7 +109,8 @@ void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
                          &yMin, &yMax,
                          &r,
                          &axMin, &axMax,
-                         &ayMin, &ayMax);
+                         &ayMin, &ayMax,
+                         &resStream);
 
    int nChildren = thisNode->get_NumChildren();
    
@@ -127,13 +146,13 @@ void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
             &fakeReqFunc, &fakeResFunc, 
             &caMins[0], &caMaxes[0]
          );
-         
+         /*
          char assignFilename[80];
          snprintf(assignFilename, 80, "internal_assigns_%d", r);
          FILE* aFile;
          aFile = fopen(assignFilename, "w");
          internalNode->snapshot(aFile);
-         fclose(aFile);
+         fclose(aFile);//*/
          
          unsigned int cnum = 0;
          for (; cIt != children.end(); cIt++) {
@@ -153,7 +172,8 @@ void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
                xMin, xMax, yMin, yMax, 
                cr, 
                caMins[cnum * 2 + 0], caMaxes[cnum * 2 + 0],
-               caMins[cnum * 2 + 1], caMaxes[cnum * 2 + 1])
+               caMins[cnum * 2 + 1], caMaxes[cnum * 2 + 1],
+               resStream)
             );
 
             packets_out.push_back(new_packet);
@@ -177,7 +197,7 @@ void doNothing( std::vector< MRN::PacketPtr >& packets_in,
                 std::vector< MRN::PacketPtr >& /* packets_out_reverse */,
                 void ** /* client data */, MRN::PacketPtr& /* params */,
                 const MRN::TopologyLocalInfo& ) {
-   std::cout << "doNothing was called\n";
+   //std::cout << "doNothing was called\n";
    for( unsigned int i = 0; i < packets_in.size( ); i++ ) {
         //doNothing_format_string = packets_in[i]->get_FormatString();
         //std::cout << "Format string: " << doNothing_format_string << "\n";

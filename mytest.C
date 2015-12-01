@@ -16,7 +16,7 @@ ReturnCode requestFunc(unsigned int, Request* req) {
 }
 
 ReturnCode responseFunc(Response* res) {
-   std::cout << "Response callback called!\n";
+   //std::cout << "Response callback called!\n";
    return RETURN_CODE_NO_ERROR;
 }
 
@@ -136,14 +136,15 @@ main(int argc, char** argv) {
    setCoords[0][7] = -0.63;
    setCoords[1][7] = 0;
    
-   int runs = 1000;
+   int runs = 12490;
+
    double coords[2];
    for (int i = 0; i < runs; i++) {
       coords[0] = frand(-10.0, 10.0);//setCoords[0][i];
       coords[1] = frand(-10.0, 10.0);//setCoords[1][i];
       Point pt(coords, 1.0, i);
       Request req(REQUEST_TYPE_ADD_POINT);
-      Response res;
+      Response res((ResponseType)0, 1);
       req.setPoint(&pt);
       n.query(&req, &res);
 
@@ -185,7 +186,7 @@ main(int argc, char** argv) {
          Request getReq(REQUEST_TYPE_POINT_DATA);
          Point pt(coords, 1.0, runs);
          getReq.setPoint(&pt);
-         Response res;
+         Response res((ResponseType)0, 1);
          res.setClusterId(0);
          n.query(&getReq, &res);
          unsigned long clustId = res.getClusterId();
