@@ -18,7 +18,7 @@ using namespace MRN;
 
 #define N_DIMENSIONS 2
 #define DIM_BUFFER_SIZE 512
-#define SNAPSHOT_INTERVAL 25000000
+#define SNAPSHOT_INTERVAL 25000;
 
 
 Network * net;
@@ -32,20 +32,20 @@ void* startPolygonQueryThread(void* filename);
 
 // These globals will be set before any threads and are read-only, making them
 // safe for reading in each thread.
-unsigned long ticksPerSec = 1000000;
+unsigned long ticksPerSec = 1000;
 int logging;
 unsigned long tick = 1448302260;
-unsigned long tickResolution = 5000;
+unsigned long tickResolution = 1000;
 unsigned long nextSnapshotTime = tick + SNAPSHOT_INTERVAL;
 
-double eps = 2.5;
-double minPts = 3.0;
+double eps = 1.0;
+double minPts = 300.0;
 double decayFactor = 0.99;
 double delthresh = 0.05;
-double xMin = -180.0;
-double xMax = 180.0;
-double yMin = -90.0;
-double yMax = 90.0;
+double xMin = 24.4;
+double xMax = 49.4;
+double yMin = -124.9;
+double yMax = -66.9;
 
 pthread_mutex_t timeLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t timeCond = PTHREAD_COND_INITIALIZER;

@@ -82,7 +82,10 @@ bool InternalNode::admitPoint(Point* pt) {
              << pt->getValue()[0] << ", " << pt->getValue()[1] 
              << " (owned by child " << getPointOwner(pt->getValue()) 
              << " / " << nChildren << ")\n";
-   */return getPointOwner(pt->getValue()) != nChildren;
+   */
+   std::vector<unsigned int> interested;
+   getPointOwnerGroup(pt->getValue(), interested);
+   return interested.size() > 0;//!= nChildren;
 }
 
 /*
@@ -241,12 +244,24 @@ void InternalNode::getCellOwnerGroup(unsigned int* whichDims,
    // We need to check the cells below and above this one in the current
    // dimension.
    unsigned int curDim = whichDims[0];
-   unsigned int low = cell[curDim - 1];
-   unsigned int high = cell[curDim + 1];
+   unsigned int low = cell[curDim] - 2;
+   unsigned int high = cell[curDim] + 2;
+   unsigned int base = cell[curDim];
+   //std::cout << "Start: nDims = " << nDims << " dim = " << curDim << " low = " << low << " high = " << high << " length[0] = " << lengths[0] << " length[1] = " << lengths[1] << "!\n";
+
+   if (low == UINT_MAX || low == UINT_MAX - 1) {
+      low = 0;
+   }
+
+   if (high >= lengths[curDim]) {
+      high = lengths[curDim] - 1;
+   }
+   
+
 
    // If there are no other dimensions left to check, see who is owner of
    // nearby cells.
-   if (nDims = 0) {
+   if (nDims == 1) {
       for (int i = low; i <= high; i++) {
          cell[curDim] = i;
          unsigned int curOwner = getCellOwner(cell);
@@ -269,7 +284,7 @@ void InternalNode::getCellOwnerGroup(unsigned int* whichDims,
       }
    }
 
-   cell[curDim]--;
+   cell[curDim] = base;
 }
 
 /*
@@ -290,6 +305,7 @@ void InternalNode::getPointOwnerGroup(double* pt, std::vector<unsigned int>& uni
       whichDims[i] = i;
    }
 
+   //std::cout << "Calling get cell owner group whichDims[0] = " << whichDims[0] << " whichDims[1] = " << whichDims[1] << " dims = " << dims << "\n";
    // Now, begin the recursive calls to find nearby cells.
    getCellOwnerGroup(whichDims, cell, uniqueOwners, dims);
    free(whichDims);

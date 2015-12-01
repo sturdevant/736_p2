@@ -158,7 +158,7 @@ int main(int argc, char **argv)
             );
             pt = new Point(ptArr, 1, time);
             req = new Request((RequestType)type, pt, l1, l2);
-            std::cout << "(" << r << ")\tGot a stream point!\n";
+            //std::cout << "(" << r << ")\tGot a stream point!\n";
             res = new Response((ResponseType)0, id);
             thisNode->query(req, res);
             delete pt;

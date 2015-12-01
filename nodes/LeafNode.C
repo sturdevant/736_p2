@@ -85,7 +85,6 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
 
    switch(t) {
    case REQUEST_TYPE_ADD_POINT:
-      std::cout << "Query calling handleAdd\n";
       return handleAdd(req, res);
    case REQUEST_TYPE_POINT_DATA:
       if (c->isShadow() || c->isFringe()) {
@@ -411,7 +410,7 @@ void LeafNode::issueShadowUpdateRequest(Point* pt) {
 
 ReturnCode LeafNode::handleAdd(Request* req, Response* res) {
 
-   std::cout << "Getting point cell...\n";
+   //std::cout << "Getting point cell...\n";
    Cell* c = getPointCell(req->getPoint());
    //if (req->getPoint()->getTimestamp() % 50 == 0) {
       //std::cout << "Time is " << req->getPoint()->getTimestamp() << "\n";
@@ -963,7 +962,7 @@ double LeafNode::addToNeighbors(Point* pt, unsigned long time) {
          } else if (pt->isNeighbor(tempPt)) {
             if (tempPt->getCluster() == NULL) {
                tempPt->addNWeight(weight, time);
-               std::cout << "N weight = " << tempPt->getNWeight(time) << "\n";
+               //std::cout << "N weight = " << tempPt->getNWeight(time) << "\n";
                if (tempPt->getNWeight(time) >= minPts) {
                   std::cout << "Point joining cluster!\n";
                   std::vector<Cluster*> clusters = getNeighborClusters(tempPt, time);
