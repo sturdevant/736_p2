@@ -1,4 +1,4 @@
-
+#include <unistd.h>
 #include "mrnet/MRNet.h"
 #include "IntegerAddition.h"
 #include "LeafNode.h"
@@ -8,13 +8,14 @@ using namespace MRN;
 Stream * g_stream = NULL;
 Stream* responseStream = NULL;
 unsigned int myRank;
+char hostname[1024];
 
 ReturnCode fakeReqFunc(unsigned int, Request* req) {
    double w, nw;
    unsigned long id, type, time, l1, l2;
    double* val = (double*)malloc(2 * sizeof(double));
    req->unpack(&id, &type, &time, val, &w, &nw, &l1, &l2);
-   std::cout << "Request func called (type = " << type << ")!\n";
+   //std::cout << "Request func called (type = " << type << ")!\n";
    MRN::PacketPtr new_packet(
       new MRN::Packet(
          g_stream->get_Id(),
@@ -32,7 +33,7 @@ ReturnCode fakeResFunc(Response* res) {
    double nw;
    res->unpack(&id, &type, &time, &nw, &clustId);
 
-   std::cout << "Response func called (type = " << type << ")!\n";
+   //std::cout << "Response func called (type = " << type << ")!\n";
    MRN::PacketPtr new_packet(
       new MRN::Packet(
          responseStream->get_Id(),
@@ -46,6 +47,9 @@ ReturnCode fakeResFunc(Response* res) {
 
 int main(int argc, char **argv)
 {
+   hostname[1023] = '\0';
+   gethostname(hostname, 1023);
+   std::cout << "Backend started on: " << hostname << "\n";
    Stream* stream;
    PacketPtr p;
    int rc, tag=0, recv_val=0, num_iters=0;
@@ -65,10 +69,13 @@ int main(int argc, char **argv)
    Response* res;
    Request* req;
     do {
-        
         rc = net->recv(&tag, p, &stream);
         if( rc == -1 ) {
             fprintf( stderr, "BE: Network::recv() failure\n" );
+            std::cout << "Receive failed on " << hostname << "\n";
+            fflush(stdout);
+            fflush(stderr);
+            exit(1);
             break;
         }
         else if( rc == 0 ) {
@@ -82,7 +89,8 @@ int main(int argc, char **argv)
             p->unpack("%lf %lf %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %lf %d",
                &eps, &minPoints, &decay, &delthresh, &xMin, &xMax, &yMin,
                &yMax, &r, &axMin, &axMax, &ayMin, &ayMax, &responseStreamId);
-            //std::cout << "(" << r << ")\tBackend got init packet!\n";
+            std::cout << "Host: " << hostname << "\n" << "(" << r << ")\tBackend got init packet!\n";
+            fflush(stdout);
             g_stream = net->get_Stream(responseStreamId);
             double mins[2], maxes[2], aMins[2], aMaxes[2];
             mins[0] = xMin;
@@ -106,8 +114,7 @@ int main(int argc, char **argv)
                &aMins[0], &aMaxes[0], 
                &fakeReqFunc, &fakeResFunc
             );
-
-            //std::cout << "(" << r << ")\tLeaf Node created!\n";
+            stream->send( p);
             /*
             char ptFilename[80], assignFilename[80];
             snprintf(ptFilename, 80, "node_points_%d", r);
@@ -157,8 +164,12 @@ int main(int argc, char **argv)
                &l2
             );
             pt = new Point(ptArr, 1, time);
+            pt->setNWeight(nw);
+            pt->setWeight(w);
             req = new Request((RequestType)type, pt, l1, l2);
-            //std::cout << "(" << r << ")\tGot a stream point!\n";
+            req->setID(id);
+            if (myRank == 3)
+               std::cout << "(" << r << ")\tGot a stream point!\n";
             res = new Response((ResponseType)0, id);
             thisNode->query(req, res);
             delete pt;

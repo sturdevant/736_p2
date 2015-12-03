@@ -18,8 +18,8 @@ using namespace MRN;
 
 #define N_DIMENSIONS 2
 #define DIM_BUFFER_SIZE 512
-#define SNAPSHOT_INTERVAL 25000;
-
+#define SNAPSHOT_INTERVAL 2500000;
+#define LAST_TICK 1448512740000
 
 Network * net;
 Communicator* comm_BC; 
@@ -32,14 +32,15 @@ void* startPolygonQueryThread(void* filename);
 
 // These globals will be set before any threads and are read-only, making them
 // safe for reading in each thread.
-unsigned long ticksPerSec = 1000;
+unsigned long ticksPerSec = 300000.0;
 int logging;
-unsigned long tick = 1448302260;
-unsigned long tickResolution = 1000;
+
+unsigned long tick = 1448430300000;
+unsigned long tickResolution = 300000.0;
 unsigned long nextSnapshotTime = tick + SNAPSHOT_INTERVAL;
 
-double eps = 1.0;
-double minPts = 300.0;
+double eps = 0.5;
+double minPts = 125.0;
 double decayFactor = 0.99;
 double delthresh = 0.05;
 double xMin = 24.4;
@@ -64,20 +65,30 @@ unsigned long getNewRequestId() {
 void frontEndSnapshotRequest() {
    std::cout << "Getting snapshot at " << tick / tickResolution << "\n";
    unsigned long id = getNewRequestId();
-   if (stream_Stream->send(
+   MRN::PacketPtr packet(
+      new MRN::Packet(stream_Stream->get_Id(),
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_SNAPSHOT, tick / tickResolution, 0.0, 0.0, 1.0, 0.0, 0, 0
-       ) 
-       == -1) {
+         id, REQUEST_TYPE_SNAPSHOT, tick / tickResolution, 
+         1.0, 1.0, 1.0, 1.0, 1, 1
+      )
+   );
+
+   std::cout << "Created snapshot packet!\n";
+
+   if (stream_Stream->send(packet) == -1) {
       std::cout << "Error in sending snapshot request\n";
    }
+
+   std::cout << "About to flush snapshot request!\n";
+   
    if (stream_Stream->flush() == -1)
       std::cout << "Error in flushing stream\n";
+   std::cout << "Snapshot request sent!\n";
    //*/
 }
 
 void frontEndPointRequest(double* pt) {
-   std::cout << "Read point to request at time " << tick << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
+  //std::cout << "Read point to request at time " << tick << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
    unsigned long id = getNewRequestId();
    unsigned long* idPtr = &id;
    responseQueue.add(idPtr);
@@ -93,8 +104,8 @@ void frontEndPointRequest(double* pt) {
 }
 
 void frontEndPointStream(double* pt) {
-   std::cout << "Read point to stream at time " << tick << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
    unsigned long id = getNewRequestId();
+   //std::cout << "Read point to stream at time " << tick << " X = " << pt[0] << " Y = " << pt[1] << " ID = " << id << std::endl;
    if (stream_Stream->send(
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
          id, REQUEST_TYPE_ADD_POINT, tick / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
@@ -124,7 +135,7 @@ void* listenStart(void* listenArgs) {
       if (rc < 0) 
          std::cout << "Error receiving in frontend listenStart\n";
       else {
-         std::cout << "Successfully received in frontend\n";
+         //std::cout << "Successfully received in frontend\n";
          if (tag == PROT_REQUEST) {
                
             p->unpack(
@@ -220,7 +231,7 @@ void initMRNet(double eps,
 
    Stream* init_Stream = net->new_Stream(comm_BC, 
                                          filterIds[0],
-                                         SFILTER_DONTWAIT, 
+                                         SFILTER_WAITFORALL, 
                                          filterIds[1]);
 
    int r = net->get_NetworkTopology()->get_Root()->get_Rank();
@@ -240,7 +251,10 @@ void initMRNet(double eps,
       fprintf(stderr, "stream::flush() failure\n");
       exit(-1);
    }
-
+   PacketPtr p;
+   if (init_Stream->recv(&tag, p) == -1) {
+      std::cout << "ERROR: Did not receive init ack!\n";
+   }
    //cout << "deleting initialization stream!\n";
    //delete init_Stream;
 }
@@ -341,7 +355,7 @@ int main(int argc, char** argv) {
    }
 
    // TODO: Timekeeping/cv_signal
-   while (1) {
+   while (tick < LAST_TICK) {
       retval = sleep(1);
       if (retval != 0) {
          printf("ERROR: Failed to sleep!\n");

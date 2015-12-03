@@ -6,6 +6,14 @@
  * public functions of leaf nodes are described first.
  */
 
+unsigned long queriesFilteredSinceLastReport = 0;
+unsigned long shadowUpdatesSinceLastReport = 0;
+unsigned long clusterReplacementsSinceLastReport = 0;
+unsigned long queriesSinceLastReport = 0;
+unsigned long addsSinceLastReport = 0;
+unsigned long nextPrintTime = 0;
+unsigned long printTimeInterval = 10;
+
 LeafNode::LeafNode(unsigned int nDims,
                    double epsilon,
                    double minPts,
@@ -80,11 +88,19 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
    //std::cout << "Got cell!\n";
    if (t != REQUEST_TYPE_SNAPSHOT && (c == NULL || !c->isAssigned())) {
       //std::cout << "Filtered out point " << pt->getValue()[0] << ", " << pt->getValue()[1] << "\n";
+      queriesFilteredSinceLastReport++;
       return RETURN_CODE_NO_ERROR;
    }
 
    switch(t) {
    case REQUEST_TYPE_ADD_POINT:
+      //std::cout << "TIME = " << pt->getTimestamp() << " nextPrintTime = " << nextPrintTime << "\n";
+      if (pt->getTimestamp() > nextPrintTime) {
+         nextPrintTime = pt->getTimestamp() + printTimeInterval;
+         std::cout << "(" << uniqueId << ") ADD QUERY "  << req->getID() 
+                   << " at time = " << pt->getTimestamp() << "!\n";
+      }
+      addsSinceLastReport++;
       return handleAdd(req, res);
    case REQUEST_TYPE_POINT_DATA:
       if (c->isShadow() || c->isFringe()) {
@@ -95,8 +111,10 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
    case REQUEST_TYPE_POLYGON_DATA:
       return handlePolygon(req, res);
    case REQUEST_TYPE_CLUSTER_REPLACE:
+      clusterReplacementsSinceLastReport++;
       return handleClusterReplaceRequest(req, res);
    case REQUEST_TYPE_SHADOW_UPDATE:
+      shadowUpdatesSinceLastReport++;
       return handleShadowUpdate(req, res);
    case REQUEST_TYPE_SNAPSHOT:
       std::cout << "Handling snapshot!\n";
@@ -153,8 +171,8 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    
    unsigned long time = req->getPoint()->getTimestamp();
    char ptFilename[80], assignFilename[80];
-   snprintf(ptFilename, 80, "LN_points_%d_%ld", uniqueId, time);
-   snprintf(assignFilename, 80, "LN_assigns_%d_%ld", uniqueId, time);
+   snprintf(ptFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/results/LN_points_%d_%ld", uniqueId, time);
+   snprintf(assignFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/results/LN_assigns_%d_%ld", uniqueId, time);
    FILE* pFile;
    pFile = fopen(ptFilename, "w");
    FILE* aFile;
@@ -162,14 +180,33 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    snapshot(pFile, aFile);
    fclose(pFile);
    fclose(aFile);
+
+   char statsFilename[80];
+   snprintf(statsFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/results/LN_stats_%d_%ld", uniqueId, time);
+   FILE* sFile;
+   sFile = fopen(statsFilename, "w");
+   fprintf(sFile, "Filtered: %ld\n", queriesFilteredSinceLastReport);
+   fprintf(sFile, "Shadow Updates: %ld\n", shadowUpdatesSinceLastReport);
+   fprintf(sFile, "Replacements: %ld\n", clusterReplacementsSinceLastReport);
+   fprintf(sFile, "Adds: %ld\n", addsSinceLastReport);
+   fprintf(sFile, "Queries: %ld\n", queriesSinceLastReport);
+   fclose(sFile);
+
+
+   queriesFilteredSinceLastReport = 0;
+   shadowUpdatesSinceLastReport = 0;
+   clusterReplacementsSinceLastReport = 0;
+   queriesSinceLastReport = 0;
+   addsSinceLastReport = 0;
+   nextPrintTime = 0;
    
    #ifdef GRID_ON_SNAPSHOT
  
    char gridFilename[80];
-   snprintf(gridFilename, 80, "LN_grid_%d_%ld", uniqueId, time);
+   snprintf(gridFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/results/LN_grid_%d_%ld", uniqueId, time);
    FILE* gridFile = fopen(gridFilename, "w");
    double* tmpVals = (double*)malloc(2 * sizeof(double));
-   Point pt = new Point(tmpVals, 1.0, time);
+   Point* pt = new Point(tmpVals, 1.0, time);
 
    double* x = &(pt->getValue()[0]);
    double* y = &(pt->getValue()[1]);
@@ -177,11 +214,12 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    for (*x = mins[0] + eps / 6.0; (*x) < maxes[0]; (*x) += eps / 3.0) {
       for (*y = mins[1] + eps / 6.0; (*y) < maxes[1]; (*y) += eps / 3.0) {
          std::vector<Cluster*> clusters = getNeighborClusters(pt, time);
+         std::cout << "(" << uniqueId << ") Printing to grid!\n";
          fprintf(
             gridFile, 
             "%lf,%lf,%ld\n",
             *x, *y, 
-            (cluster.size() > 0 ? clusters[0]->getId() : 0)
+            (clusters.size() > 0 ? clusters[0]->getId() : 0)
          );
       }
    }
@@ -202,7 +240,7 @@ ReturnCode LeafNode::handleShadowUpdate(Request* req, Response* res) {
    if (!c->isShadow()) {
       return RETURN_CODE_NO_ERROR;
    }
-   std::cout << "Shadow update received!\n";
+   //std::cout << "Shadow update received!\n";
    bool madeNewClust = false;
    double* vals = pt->getValue();
    Cluster* clust = NULL;
@@ -222,14 +260,15 @@ ReturnCode LeafNode::handleShadowUpdate(Request* req, Response* res) {
       std::cout 
          << "(" << uniqueId 
          << ") WARNING: Could not find original point on shadow update!\n";
-      exit(1);
+      handleAdd(req, res);
+      //exit(1);
       return RETURN_CODE_NO_ERROR;
    }
 
    // If this point matches, we need to add in the proper neighbor
    // weight. If there was no cluster, that's all. Otherwise, we need to
    // check for cluster merging at this location.
-   std::cout << "Setting shadow update weight to " << pt->getNWeight(time) << std::endl;
+   //std::cout << "Setting shadow update weight to " << pt->getNWeight(time) << std::endl;
    lpt->setNWeight(pt->getNWeight(time));
    lpt->setWeight(pt->getWeight(time));
    lpt->setTimestamp(time);
@@ -417,7 +456,7 @@ ReturnCode LeafNode::handleAdd(Request* req, Response* res) {
    //}
    if (c == NULL) {
       std::cout << "C is null!\n";
-      exit(1);
+      //exit(1);
       return RETURN_CODE_NO_ERROR; // TODO: Change this.
    }
 
@@ -455,7 +494,7 @@ ReturnCode LeafNode::handleAdd(Request* req, Response* res) {
             std::cout << "Making cluster...\n";
             makeCluster(pt);
          } else if (clusters.size() == 1) {
-            std::cout << "Joining cluster...\n";
+            //std::cout << "Joining cluster...\n";
             addToCluster(clusters[0], pt);
          } else {
             std::cout << "Merging clusters...\n";
@@ -472,7 +511,7 @@ ReturnCode LeafNode::handleAdd(Request* req, Response* res) {
       }
 
       if (needsShadowUpdate) {
-         std::cout << "(" << uniqueId << ": " << time << ") Point needs shadow update " << pt->getValue()[0] << ", " << pt->getValue()[1] << " NWeight = " << pt->getNWeight(time) << " Cluster = " << (pt->getCluster() == NULL ? 0 : pt->getCluster()->getId()) << std::endl;
+         //std::cout << "(" << uniqueId << ": " << time << ") Point needs shadow update " << pt->getValue()[0] << ", " << pt->getValue()[1] << " NWeight = " << pt->getNWeight(time) << " Cluster = " << (pt->getCluster() == NULL ? 0 : pt->getCluster()->getId()) << std::endl;
          issueShadowUpdateRequest(pt);
          //std::cout << "Done issuing request!\n";
       }
@@ -507,25 +546,30 @@ ReturnCode LeafNode::handlePolygon(Request* req, Response* res) {
 }
 
 ReturnCode LeafNode::handleClusterReplaceRequest(Request* req, Response* res) {
-   std::cout << "(" << uniqueId << ") Handle cluster replace\n";
+   /*std::cout << "(" << uniqueId << ") Handle cluster replace\n";
    for (unsigned int i = 0; i < clusterList.size(); i++) {
       std::cout << "(" << uniqueId << ")\tCluster[" << i << "] = " << clusterList[i]->getId() << " " << clusterList[i]->getPtCount() << " points\n";
-   }
+   }//*/
    
    if (getPointCell(req->getPoint())->isFringe()) {
       return RETURN_CODE_NO_ERROR;
    }
+   
+   Cluster* oldClust;
 
    Point* pt = getLocalPoint(req->getPoint(), req->getPoint()->getTimestamp());
    if (pt == NULL) {
       std::cout 
          << "(" << uniqueId 
          << ") WARNING: Could not find local point for replacement!\n";
-      exit(1);
-      return RETURN_CODE_NO_ERROR;
+      pt = req->getPoint();
+      oldClust = lookupClusterId(req->getLong1());
+      //exit(1);
+      //return RETURN_CODE_NO_ERROR;
+   } else {
+      oldClust = pt->getCluster();
    }
 
-   Cluster* oldClust = pt->getCluster();//lookupClusterId(req->getLong1());
    if (oldClust == NULL) {
       std::cout << "Attempt to replace non-existant cluster!\n";
       return RETURN_CODE_NO_ERROR;
@@ -539,7 +583,7 @@ ReturnCode LeafNode::handleClusterReplaceRequest(Request* req, Response* res) {
       newClust->addCheckPoint(pt);
    }
 
-   std::cout << "(" << uniqueId << ")\t" << oldClust->getId() << " => " << newClust->getId() << " at t = " << pt->getTimestamp() << "\n";
+   //std::cout << "(" << uniqueId << ")\t" << oldClust->getId() << " => " << newClust->getId() << " at t = " << pt->getTimestamp() << "\n";
 
    if (newClust->getId() > oldClust->getId()) {// && oldClust->getId() != req->getLong1()) {
       Cell* c = getPointCell(pt);
@@ -567,7 +611,7 @@ void LeafNode::setPointCluster(Point* pt, Cluster* clust) {
    }
 
    if (old != NULL || clust != NULL) {
-      std::cout << "(" << uniqueId << ") Setting point cluster (" << pt->getValue()[0] << ", " << pt->getValue()[1] << ") " << (pt->getCluster() == NULL ? 0 : pt->getCluster()->getId()) << " => " << (clust == NULL ? 0 : clust->getId()) << "\n";
+      //std::cout << "(" << uniqueId << ") Setting point cluster (" << pt->getValue()[0] << ", " << pt->getValue()[1] << ") " << (pt->getCluster() == NULL ? 0 : pt->getCluster()->getId()) << " => " << (clust == NULL ? 0 : clust->getId()) << "\n";
    }
 
    if (clust != NULL) {
@@ -849,7 +893,7 @@ void LeafNode::replaceClusterFromPoint(Cluster* oldClust, Cluster* newClust, Poi
 
    if (newClust == NULL) {
       std::cout << "WARNING: ATTEMPT TO REPLACE WITH NULL CLUSTER!\n";
-      exit(0);
+      //exit(0);
       return;
    }
 
@@ -964,9 +1008,9 @@ double LeafNode::addToNeighbors(Point* pt, unsigned long time) {
                tempPt->addNWeight(weight, time);
                //std::cout << "N weight = " << tempPt->getNWeight(time) << "\n";
                if (tempPt->getNWeight(time) >= minPts) {
-                  std::cout << "Point joining cluster!\n";
+                  //std::cout << "Point joining cluster!\n";
                   std::vector<Cluster*> clusters = getNeighborClusters(tempPt, time);
-                  std::cout << "Got " << clusters.size() << " neighbor clusters!\n";
+                  //std::cout << "Got " << clusters.size() << " neighbor clusters!\n";
                   if (clusters.size() == 0) {
                      makeCluster(tempPt);
                      if (isPointBorder(tempPt)) {

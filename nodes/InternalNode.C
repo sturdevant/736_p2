@@ -35,8 +35,6 @@ InternalNode::InternalNode(unsigned int nDims,
    this->responseFunc = responseFunc;
    //this.thread = (pthread_t*)malloc(sizeof(pthread_t));
 
-   //std::cout << "Assigned " << aMins[0] << " to " << aMaxes[0] << " X\n";
-   //std::cout << "Assigned " << aMins[1] << " to " << aMaxes[1] << " Y\n";
 
    setLengths();
    setDimFactors();
@@ -59,9 +57,9 @@ InternalNode::InternalNode(unsigned int nDims,
    assignOwners(aMins, aMaxes, caMins, caMaxes);
    //std::cout << "returning\n";
 
-   // TODO: (maybe? maybe not) Need to thread out behavior here. We need to make
-   // it so that this can run independently of the caller and can accept
-   // asynchronous requests and responses.
+   //std::cout << "Assigned " << aMins[0] << " to " << aMaxes[0] << " X\n";
+   //std::cout << "Assigned " << aMins[1] << " to " << aMaxes[1] << " Y\n";
+   
    //for (int i = 0; i <= maxIndex; i++) {
       //std::cout << "(" << aMins[0] << ", " << aMaxes[0] << ")\tOwner[" << 56 << "] " << owners[56] << "\n";
    //}
@@ -82,7 +80,7 @@ bool InternalNode::admitPoint(Point* pt) {
              << pt->getValue()[0] << ", " << pt->getValue()[1] 
              << " (owned by child " << getPointOwner(pt->getValue()) 
              << " / " << nChildren << ")\n";
-   */
+   //*/
    std::vector<unsigned int> interested;
    getPointOwnerGroup(pt->getValue(), interested);
    return interested.size() > 0;//!= nChildren;
@@ -196,7 +194,7 @@ unsigned int InternalNode::getCellOwner(unsigned int* cell) {
 
 
       // Check to make sure individual components of cell are within bounds.
-      if (cur >= lengths[i]) {
+      if (cur >= lengths[i] * dimFactors[i]) {
          return nChildren;
       }
 
@@ -325,7 +323,7 @@ void InternalNode::setOwner(unsigned int* cell, unsigned int owner) {
 
       // Check to make sure individual components of cell are within bounds.
       if (cur >= lengths[i] * dimFactors[i]) {
-         //std::cout << "ERROR: setOwner called on invalid point (" << cell[0] << ", " << cell[1] << ":" << i << ")!" << std::endl;
+         std::cout << "ERROR: setOwner called on invalid point (" << mins[0] + eps * cell[0] << ", " << mins[1] + eps * cell[1] << ":" << i << ")!" << std::endl;
          return;
       }
 
@@ -340,7 +338,7 @@ void InternalNode::setOwner(unsigned int* cell, unsigned int owner) {
 
    // We have found the proper index into our 1-dimensional list, so assign the
    // owner there.
-   //std::cout << "Setting owner at index " << index << "\n";
+   //std::cout << "Setting owner at " << index << " to " << owner << "\n";
    owners[index] = owner;
 }
 
@@ -366,7 +364,6 @@ void InternalNode::assignSubslice(unsigned int* whichDims,
    if (nDims == 1) {
       for (unsigned int i = 0; i < aLengths[curDim]; i++) {
          cell[curDim] = base + i;
-         //std::cout << "i = " << i << "\n";
          setOwner(cell, owner);
          //std::cout << "Owner set!\n";
       }
@@ -400,13 +397,14 @@ unsigned int max_element_index(unsigned int* arr, unsigned int len) {
 }
 
 void InternalNode::assignOwners(double* aMins, double* aMaxes, double* caMins, double* caMaxes) {
+
    //std::cout << "starting...\n";
    unsigned int* aLengths = (unsigned int*)malloc(dims * sizeof(unsigned int));
    //std::cout << "alengths allocated\n";
    for (unsigned int i = 0; i < dims; i++) {
       aLengths[i] = (unsigned int)ceil((aMaxes[i] - aMins[i]) / eps);
    }
-   //std::cout << "alengths set\n";
+   //std::cout << "aLengths[0] = " << aLengths[0] << " aLengths[1] == " << aLengths[1] << "\n";
    unsigned int largestDim = max_element_index(aLengths, dims);
    //std::cout << "large dim\n";
    unsigned int dimSize = aLengths[largestDim];//lengths[largestDim];
@@ -447,8 +445,8 @@ void InternalNode::assignOwners(double* aMins, double* aMaxes, double* caMins, d
    //std::cout << "non-split ca set\n";
    unsigned int* cell = (unsigned int*)malloc(dims * sizeof(unsigned int));
    for (unsigned int i = 0; i < dims; i++) {
-      cell[i] = ((unsigned int)floor((aMins[i] - mins[i]) / eps)) * dimFactors[i];
-      //std::cout << "(" << aMins[0] << ", " << aMaxes[0] << ") cell[" << i << "] = " << cell[i] << "\n";
+      cell[i] = ((unsigned int)floor((aMins[i] - mins[i]) / eps));
+      //std::cout << "(" << aMins[i] << ", " << aMaxes[i] << ") cell[" << i << "] = " << cell[i] << "\n";
    }
    
    //std::cout << "cells allocated\n";
@@ -462,7 +460,7 @@ void InternalNode::assignOwners(double* aMins, double* aMaxes, double* caMins, d
       //std::cout << "giving cells to child " << i << "\n";
       // Assign slices to owner and assign cells too.
       unsigned int nSlices = (unsigned int)ceil(slicesPerOwner + remainder);
-      //std::cout << "num slices = " << nSlices << "\n";
+      std::cout << "num slices = " << nSlices << "\n";
       unsigned int child = i * dims + largestDim;
       caMins[child] = mins[largestDim] + curPos * eps;
       caMaxes[child] = caMins[child] + nSlices * eps;

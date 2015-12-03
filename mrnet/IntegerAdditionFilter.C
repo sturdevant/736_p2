@@ -23,6 +23,7 @@ ReturnCode fakeResFunc(Response* res) {
    std::cout << "Response func called!\n";
 }
 
+char hostname[1024];
 int r;
 bool isLeaf = false;
 const MRN::Network* network = NULL;
@@ -43,7 +44,7 @@ void PointFilter(std::vector< MRN::PacketPtr >& packets_in,
    const MRN::Network* net = t.get_Network();
    unsigned long id, type, time, l1, l2;
    double w, nw;
-   if (net->is_LocalNodeBackEnd()) {
+   if (net->is_LocalNodeBackEnd() || net->get_LocalRank() == 16) {
       for (i = 0; i < packets_in.size(); i++) {
          packets_out.push_back(packets_in[i]);
       }
@@ -64,6 +65,7 @@ void PointFilter(std::vector< MRN::PacketPtr >& packets_in,
          &l1,
          &l2
       );
+
 
       Point::Point* pt = new Point(ptArr, 1, time);
       if (type == REQUEST_TYPE_SNAPSHOT || internalNode->admitPoint(pt)) {
@@ -95,6 +97,8 @@ void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
    std::set<MRN::NetworkTopology::Node*>::iterator cIt = children.begin();
   
    //int r;
+   hostname[1023] = '\0';
+   gethostname(hostname, 1023);
    double minPoints, eps;
    double decay, delthresh;
    double xMin, xMax, yMin, yMax;
@@ -116,6 +120,7 @@ void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
    
    // If message isn't intended for this node, ignore it!
    if (r == (int)t.get_Rank()){
+      std::cout << "internal node successfully obtained initialization on: " << hostname << "\n";
       //std::cout << "(" << r << ") Internal node got an init packet (Parent = " << net->is_LocalNodeParent() << ", Backend = " << net->is_LocalNodeBackEnd() << ")!\n";
       // If this node is a parent, send assignments to children
       if (net->is_LocalNodeParent()) {
@@ -130,6 +135,9 @@ void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
          aMins[1] = ayMin;
          aMaxes[0] = axMax;
          aMaxes[1] = ayMax;
+
+         if (r > 17)
+            std::cout << "Filter rank = " << r << " aMins[0] = " << aMins[0] << " aMaxes[0] = " << aMaxes[0] << " aMins[1] = " << aMins[1] << " aMaxes[1] = " << aMaxes[1] << "\n";
 
          double caMins[nChildren * 2], caMaxes[nChildren * 2];
 
@@ -146,9 +154,9 @@ void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
             &fakeReqFunc, &fakeResFunc, 
             &caMins[0], &caMaxes[0]
          );
-         /*
+         
          char assignFilename[80];
-         snprintf(assignFilename, 80, "internal_assigns_%d", r);
+         snprintf(assignFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/results/internal_assigns_%d", r);
          FILE* aFile;
          aFile = fopen(assignFilename, "w");
          internalNode->snapshot(aFile);
@@ -183,6 +191,8 @@ void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
 
       if (net->is_LocalNodeBackEnd()) {
          isLeaf = true;
+         fflush(stdout);
+
          // Just send whatever we got to the backend code
          std::vector<MRN::PacketPtr>::iterator it = packets_in.begin();
          packets_out.push_back(*it);
