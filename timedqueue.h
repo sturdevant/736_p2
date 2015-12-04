@@ -28,7 +28,7 @@ private:
    memslab_t* usedTail;
    pthread_mutex_t freeLock;
    pthread_mutex_t usedLock;
-   unsigned long esize;
+   unsigned long esize, count;
 };
 
 #endif

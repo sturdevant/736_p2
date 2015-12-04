@@ -18,9 +18,10 @@ using namespace MRN;
 
 #define N_DIMENSIONS 2
 #define DIM_BUFFER_SIZE 512
-#define SNAPSHOT_INTERVAL 2500000;
-#define LAST_TICK 1448512740000
-
+#define SNAPSHOT_INTERVAL 3000000
+#define LAST_TICK  1448512740000//1447052505000
+#define FIRST_TICK 1448430300000//1446841305000
+                   
 Network * net;
 Communicator* comm_BC; 
 Stream* stream_Stream;
@@ -32,21 +33,27 @@ void* startPolygonQueryThread(void* filename);
 
 // These globals will be set before any threads and are read-only, making them
 // safe for reading in each thread.
-unsigned long ticksPerSec = 300000.0;
+unsigned long ticksPerSec = 3000000;
 int logging;
 
-unsigned long tick = 1448430300000;
-unsigned long tickResolution = 300000.0;
-unsigned long nextSnapshotTime = tick + SNAPSHOT_INTERVAL;
+unsigned long tick = FIRST_TICK;
+unsigned long tickResolution = 3000000;//288 * ticksPerSec;
+unsigned long nextSnapshotTime = FIRST_TICK + SNAPSHOT_INTERVAL;
 
 double eps = 0.5;
-double minPts = 125.0;
+double minPts = 100.0;
 double decayFactor = 0.99;
 double delthresh = 0.05;
 double xMin = 24.4;
 double xMax = 49.4;
 double yMin = -124.9;
 double yMax = -66.9;
+
+unsigned long totalResponses = 0;
+double totalResponseTime = 0;
+unsigned long queriesSent = 0;
+unsigned long pointsSent = 0;
+unsigned long replaysSent = 0;
 
 pthread_mutex_t timeLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t timeCond = PTHREAD_COND_INITIALIZER;
@@ -73,13 +80,11 @@ void frontEndSnapshotRequest() {
       )
    );
 
-   std::cout << "Created snapshot packet!\n";
-
    if (stream_Stream->send(packet) == -1) {
       std::cout << "Error in sending snapshot request\n";
    }
 
-   std::cout << "About to flush snapshot request!\n";
+   //std::cout << "About to flush snapshot request!\n";
    
    if (stream_Stream->flush() == -1)
       std::cout << "Error in flushing stream\n";
@@ -90,11 +95,16 @@ void frontEndSnapshotRequest() {
 void frontEndPointRequest(double* pt) {
   //std::cout << "Read point to request at time " << tick << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
    unsigned long id = getNewRequestId();
+
+   pthread_mutex_lock(&timeLock);
+   queriesSent++;
+   pthread_mutex_unlock(&timeLock);
+
    unsigned long* idPtr = &id;
    responseQueue.add(idPtr);
    if (stream_Stream->send(
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_POINT_DATA, tick / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
+         id, REQUEST_TYPE_POINT_DATA, (tick - FIRST_TICK) / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
        ) 
        == -1) {
       std::cout << "Error in sending point request\n";
@@ -106,9 +116,15 @@ void frontEndPointRequest(double* pt) {
 void frontEndPointStream(double* pt) {
    unsigned long id = getNewRequestId();
    //std::cout << "Read point to stream at time " << tick << " X = " << pt[0] << " Y = " << pt[1] << " ID = " << id << std::endl;
+
+   pthread_mutex_lock(&timeLock);
+   pointsSent++;
+   pthread_mutex_unlock(&timeLock);
+
+
    if (stream_Stream->send(
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_ADD_POINT, tick / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
+         id, REQUEST_TYPE_ADD_POINT, (tick - FIRST_TICK) / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
        ) 
        == -1) {
       std::cout << "Error in sending stream point\n";
@@ -143,6 +159,14 @@ void* listenStart(void* listenArgs) {
                &id, &type, &time, &x, &y, &w, &nw, &l1, &l2
             );
 
+            if (type == REQUEST_TYPE_SNAPSHOT) {
+            }
+
+            pthread_mutex_lock(&timeLock);
+            replaysSent++;
+            pthread_mutex_unlock(&timeLock);
+                  
+
             MRN::PacketPtr pOut(
                new MRN::Packet( 
                   stream->get_Id(), 
@@ -156,7 +180,14 @@ void* listenStart(void* listenArgs) {
                RESPONSE_FORMAT_STRING,
                &id, &type, &time, &nw, &clustId
             );
-            std::cout << "Front end got response after " << responseQueue.remove(&id) << " nanoseconds!\n";
+            try {
+               pthread_mutex_lock(&timeLock);
+               totalResponseTime += responseQueue.remove(&id);
+               totalResponses++;
+               pthread_mutex_unlock(&timeLock);
+            } catch (const char* c) {
+               std::cout << c;
+            }
          }
       }
    }
@@ -354,6 +385,8 @@ int main(int argc, char** argv) {
 
    }
 
+   FILE* rtFile = fopen("response_times", "w");
+
    // TODO: Timekeeping/cv_signal
    while (tick < LAST_TICK) {
       retval = sleep(1);
@@ -361,6 +394,17 @@ int main(int argc, char** argv) {
          printf("ERROR: Failed to sleep!\n");
       }
       pthread_mutex_lock(&timeLock);
+      fprintf(rtFile, "%ld,%lf,%ld,%ld, %ld\n", 
+         tick, 
+         totalResponseTime / totalResponses, 
+         queriesSent, 
+         replaysSent, 
+         pointsSent
+      );
+      totalResponseTime = 0;
+      totalResponses = 0;
+      queriesSent = 0;
+      replaysSent = 0;
       tick += ticksPerSec;
       pthread_cond_broadcast(&timeCond);
       pthread_mutex_unlock(&timeLock);
@@ -370,6 +414,8 @@ int main(int argc, char** argv) {
          nextSnapshotTime += SNAPSHOT_INTERVAL;
       }
    }
+
+   fclose(rtFile);
 
    // Wait for each of the child threads to finish.
    for (; threadCount > 0; threadCount--) {
@@ -382,6 +428,7 @@ int main(int argc, char** argv) {
 
 void* startPointQueryThread(void* arg) {
 
+   std::cout << "Starting point query thread!\n";
    threadargs* args = (threadargs*)arg;
    int i;
    FILE* outfd;
@@ -394,25 +441,14 @@ void* startPointQueryThread(void* arg) {
       exit(-1);
    }
 
+   std::cout << "Beginning query reading!\n";
+
    // Make 1 byte of room at the beginning for the type.
    double* pt = (double*)(&writeBuf[0]);
    std::fstream in((char*)args->input, fstream::in);
 
-   int logging = args->output != NULL;
    TimedQueue* logQueue;
    pthread_t loggerThread;
-
-   if (logging) {
-
-      outfd = fopen((char*)args->output, "w+");
-      if (outfd == NULL) {
-         printf("ERROR: Could not open output file!\n");
-         exit(-1);
-      }
-      Logger logger(fd, fileno(outfd));
-      logger.run(&loggerThread);
-      logQueue = logger.getQueue();
-   }
 
    while(!in.eof()) {
       if (!in.getline(buf, N_DIMENSIONS * DIM_BUFFER_SIZE - 1)) {
@@ -424,7 +460,7 @@ void* startPointQueryThread(void* arg) {
         
          // This is a timestamp, so we may need to wait.
          unsigned long t = atol(&buf[1]);
-         //std::cout << "Timestamp found: " << t << std::endl;
+         std::cout << "Timestamp found: " << t << std::endl;
          pthread_mutex_lock(&timeLock);
          while (t > tick) {
             // This timestamp hasn't come yet, so we need to go to sleep.
@@ -445,13 +481,6 @@ void* startPointQueryThread(void* arg) {
          for (i = 0; i < N_DIMENSIONS; i++) {
             pt[i] = atof(curBuf);
             curBuf = strchr(curBuf, ',') + 1;
-         }
-
-         if (logging) {
-            std::cout << "About to log point." << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
-
-            // If we're logging, we need to tell our logger to look for this point.
-            logQueue->add(pt);
          }
 
          //printf("%02X\n", *writeBuf);
@@ -495,7 +524,7 @@ void* startStreamThread(void* arg) {
       if (buf[0] == 't') {
          // This is a timestamp, so we may need to wait.
          unsigned long t = atol(&buf[1]);
-         std::cout << "Timestamp found: " << t << std::endl;
+         //std::cout << "Timestamp found: " << t << std::endl;
          pthread_mutex_lock(&timeLock);
          while (t > tick) {
             // This timestamp hasn't come yet, so we need to go to sleep.

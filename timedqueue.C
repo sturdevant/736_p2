@@ -18,7 +18,7 @@ TimedQueue::TimedQueue(unsigned long elementSize, unsigned long nElements) {
 
    // We need to malloc space for the specified number of elements and the
    // appropriate bookeeping per element.
-   void* buf = malloc(bufSize);
+   buf = malloc(bufSize);
 
    if (buf == NULL) {
       throw "ERROR: Could not allocate TimedQueue buffer!\n";
@@ -35,6 +35,8 @@ TimedQueue::TimedQueue(unsigned long elementSize, unsigned long nElements) {
       cur->next = (memslab_t*)(((char*)cur) + slabSize);
       cur = cur->next;
    }
+
+   count = 0;
 
    // Time to make locks
    pthread_mutex_init(&freeLock, NULL);
@@ -59,6 +61,7 @@ unsigned long TimedQueue::remove(void* element) {
 
    pthread_mutex_lock(&usedLock);
    if (usedHead == NULL) {
+      std::cout << "ERROR: Attempt to remove from empty queue!\n";
       throw "ERROR: Queue empty!\n";
    }
    void* tail = usedTail;
@@ -75,17 +78,22 @@ unsigned long TimedQueue::remove(void* element) {
       }
    }
 
-   if (!found) {
-      if (memcmp(element, &(cur->data), esize)) {
-         throw "ERROR: Queue did not contain point!\n";
-      }
+   if (!found && memcmp(element, &(cur->data), esize)) {
+      std::cout << "ERROR: Could not find element in queue!\n";
+      throw "ERROR: Queue did not contain point!\n";
    }
    
    unsigned long t2 = cur->entryTime;
 
    // First, delete the item from the list of used items.
    pthread_mutex_lock(&usedLock);
-   if (prev != NULL) {
+   count--;
+   if (cur == usedHead) {
+      usedHead = usedHead->next;
+      if (usedHead == NULL) {
+         usedTail = NULL;
+      }
+   } else if (prev != NULL) {
       prev->next = cur->next;
       if (cur == usedTail) {
          usedTail = prev;
@@ -123,6 +131,7 @@ void TimedQueue::add(void* element) {
 
    pthread_mutex_lock(&freeLock);
    if (freeHead == NULL) {
+      std::cout << "ERROR: Queue full. Could not add element to queue!\n";
       throw "ERROR: Queue full!\n";
    } else {
       slab = freeHead;
@@ -139,6 +148,8 @@ void TimedQueue::add(void* element) {
    bcopy(element, &(slab->data), esize);
 
    pthread_mutex_lock(&usedLock);
+   count++;
+   //std::cout << "Queue contains " << count << " elements (h = " << usedHead << " t = " << usedTail << "!\n";
    slab->next = NULL;
    if (usedTail == NULL) {
       usedHead = slab;

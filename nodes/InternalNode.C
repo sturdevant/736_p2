@@ -460,7 +460,7 @@ void InternalNode::assignOwners(double* aMins, double* aMaxes, double* caMins, d
       //std::cout << "giving cells to child " << i << "\n";
       // Assign slices to owner and assign cells too.
       unsigned int nSlices = (unsigned int)ceil(slicesPerOwner + remainder);
-      std::cout << "num slices = " << nSlices << "\n";
+      //std::cout << "num slices = " << nSlices << "\n";
       unsigned int child = i * dims + largestDim;
       caMins[child] = mins[largestDim] + curPos * eps;
       caMaxes[child] = caMins[child] + nSlices * eps;

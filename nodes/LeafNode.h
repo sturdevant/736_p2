@@ -35,6 +35,7 @@ public:
    ~LeafNode();
    ReturnCode query(Request* req, Response* res);
    void snapshot(FILE* ptFile, FILE* assignmentFile);
+   unsigned long getNPoints(void) { return nPoints; }
 
 private:
    ReturnCode handleSnapshot(Request* req, Response* res);
@@ -85,6 +86,7 @@ private:
    Cell* getPointCell(Point* point);
    void indexToDArray(unsigned int index, double* d);
 
+   unsigned long nPoints;
    unsigned int dims;
    unsigned int uniqueId;
    double* mins;

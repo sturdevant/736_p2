@@ -70,7 +70,7 @@ void PointFilter(std::vector< MRN::PacketPtr >& packets_in,
       Point::Point* pt = new Point(ptArr, 1, time);
       if (type == REQUEST_TYPE_SNAPSHOT || internalNode->admitPoint(pt)) {
          if (type == REQUEST_TYPE_SNAPSHOT) {
-            std::cout << "(" << net->get_LocalRank() << ") Got snapshot at " << time << "\n";
+            //std::cout << "(" << net->get_LocalRank() << ") Got snapshot at " << time << "\n";
          }
          //std::cout << "(" << net->get_LocalRank() << ") I care about (" << ptArr[0] << ", " << ptArr[1] << ")\n";
          packets_out.push_back(packets_in[i]);

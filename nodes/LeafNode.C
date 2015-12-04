@@ -28,6 +28,7 @@ LeafNode::LeafNode(unsigned int nDims,
                    ReturnCode (*requestFunc)(unsigned int, Request*),
                    ReturnCode (*responseFunc)(Response*)) {
 
+   this->nPoints = 0;
    this->dims = nDims;
    this->eps = epsilon;
    this->minPts = minPts;
@@ -97,8 +98,8 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
       //std::cout << "TIME = " << pt->getTimestamp() << " nextPrintTime = " << nextPrintTime << "\n";
       if (pt->getTimestamp() > nextPrintTime) {
          nextPrintTime = pt->getTimestamp() + printTimeInterval;
-         std::cout << "(" << uniqueId << ") ADD QUERY "  << req->getID() 
-                   << " at time = " << pt->getTimestamp() << "!\n";
+         //std::cout << "(" << uniqueId << ") ADD QUERY "  << req->getID() 
+         //          << " at time = " << pt->getTimestamp() << "!\n";
       }
       addsSinceLastReport++;
       return handleAdd(req, res);
@@ -106,6 +107,7 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
       if (c->isShadow() || c->isFringe()) {
          return RETURN_CODE_NO_ERROR;
       } else {
+         queriesSinceLastReport++;
          return handlePoint(req, res);
       }
    case REQUEST_TYPE_POLYGON_DATA:
@@ -117,7 +119,7 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
       shadowUpdatesSinceLastReport++;
       return handleShadowUpdate(req, res);
    case REQUEST_TYPE_SNAPSHOT:
-      std::cout << "Handling snapshot!\n";
+      //std::cout << "Handling snapshot!\n";
       return handleSnapshot(req, res);
    }
 
@@ -190,6 +192,7 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    fprintf(sFile, "Replacements: %ld\n", clusterReplacementsSinceLastReport);
    fprintf(sFile, "Adds: %ld\n", addsSinceLastReport);
    fprintf(sFile, "Queries: %ld\n", queriesSinceLastReport);
+   fprintf(sFile, "Total Points: %ld\n", nPoints);
    fclose(sFile);
 
 
@@ -247,7 +250,7 @@ ReturnCode LeafNode::handleShadowUpdate(Request* req, Response* res) {
    if (req->getLong1() != 0) {
       clust = lookupClusterId(req->getLong1());
       if (clust == NULL) {
-         std::cout << "New cluster on boundry!\n";
+         //std::cout << "New cluster on boundry!\n";
          clust = makeNewClusterWithId(req->getLong1());
          madeNewClust = true;
       }
@@ -473,10 +476,18 @@ ReturnCode LeafNode::handleAdd(Request* req, Response* res) {
    //std::cout << "Adding point to cell...\n";
    Point* pt = new Point(*(req->getPoint()));
    unsigned long time = pt->getTimestamp();
-
+   
    //std::cout << "Adding point to neighbors...\n";
    addToNeighbors(pt, time);
-
+/*
+   Point* lpt = getLocalPoint(pt, time);
+   if (lpt != NULL) {
+      lpt->setWeight(lpt->getWeight(time) + pt->getWeight(time));
+      lpt->setTimestamp(time);
+      delete pt;
+      return RETURN_CODE_NO_ERROR;
+   }//*/ 
+   
    //std::cout << "Setting nWeight...\n";
    pt->setNWeight(pt->getWeight(time));
 
@@ -491,13 +502,13 @@ ReturnCode LeafNode::handleAdd(Request* req, Response* res) {
       if (nWeight >= minPts) {
          std::vector<Cluster*> clusters = getNeighborClusters(pt, time);
          if (clusters.size() == 0) {
-            std::cout << "Making cluster...\n";
+            //std::cout << "Making cluster...\n";
             makeCluster(pt);
          } else if (clusters.size() == 1) {
             //std::cout << "Joining cluster...\n";
             addToCluster(clusters[0], pt);
          } else {
-            std::cout << "Merging clusters...\n";
+            //std::cout << "Merging clusters...\n";
             addToCluster(mergeClusters(clusters, pt), pt);
          }
       }
@@ -518,6 +529,7 @@ ReturnCode LeafNode::handleAdd(Request* req, Response* res) {
    }
 
    c->getPointVector()->push_back(pt);
+   nPoints++;
 
    //std::cout << "Returning...\n";
    return RETURN_CODE_NO_ERROR;
@@ -559,9 +571,9 @@ ReturnCode LeafNode::handleClusterReplaceRequest(Request* req, Response* res) {
 
    Point* pt = getLocalPoint(req->getPoint(), req->getPoint()->getTimestamp());
    if (pt == NULL) {
-      std::cout 
-         << "(" << uniqueId 
-         << ") WARNING: Could not find local point for replacement!\n";
+      //std::cout 
+      //   << "(" << uniqueId 
+      //   << ") WARNING: Could not find local point for replacement!\n";
       pt = req->getPoint();
       oldClust = lookupClusterId(req->getLong1());
       //exit(1);
@@ -571,7 +583,7 @@ ReturnCode LeafNode::handleClusterReplaceRequest(Request* req, Response* res) {
    }
 
    if (oldClust == NULL) {
-      std::cout << "Attempt to replace non-existant cluster!\n";
+      //std::cout << "Attempt to replace non-existant cluster!\n";
       return RETURN_CODE_NO_ERROR;
    }
 
@@ -628,9 +640,9 @@ void LeafNode::setPointCluster(Point* pt, Cluster* clust) {
 }
 
 void LeafNode::deleteCluster(Cluster* clust) {
-   std::cout << "(" << uniqueId << ") Deleting cluster " << clust->getId() << " at " << clust << "\n";
+   //std::cout << "(" << uniqueId << ") Deleting cluster " << clust->getId() << " at " << clust << "\n";
    for (unsigned int i = 0; i < clusterList.size(); i++) {
-      std::cout << "(" << uniqueId << ")\tChecking cluster " << clusterList[i]->getId() << " at " << clusterList[i] << "\n";
+      //std::cout << "(" << uniqueId << ")\tChecking cluster " << clusterList[i]->getId() << " at " << clusterList[i] << "\n";
       if (clusterList[i] == clust) {
          clusterList.erase(clusterList.begin() + i);
          delete clust;
@@ -667,7 +679,7 @@ Cluster* LeafNode::lookupClusterId(unsigned long id) {
 }
 
 void LeafNode::issueClusterReplaceRequest(Cluster* oldClust, Cluster* newClust, Point* pt) {
-   std::cout << "(" << uniqueId << ") Issued cluster replace request at (" << pt->getValue()[0] << ", " << pt->getValue()[1] << ")! (" << (oldClust == NULL ? 0 : oldClust->getId()) << " => " << (newClust == NULL ? 0 : newClust->getId()) << ") at t = " << pt->getTimestamp() << "\n";
+   //std::cout << "(" << uniqueId << ") Issued cluster replace request at (" << pt->getValue()[0] << ", " << pt->getValue()[1] << ")! (" << (oldClust == NULL ? 0 : oldClust->getId()) << " => " << (newClust == NULL ? 0 : newClust->getId()) << ") at t = " << pt->getTimestamp() << "\n";
    Request req(REQUEST_TYPE_CLUSTER_REPLACE,
                pt,
                (oldClust == NULL ? 0 :oldClust->getId()),
@@ -881,7 +893,7 @@ Point* LeafNode::getLocalPoint(Point* pt, unsigned long time) {
       }
    }
 
-   std::cout << "(" << uniqueId << ")\tCould not find local point (" << pt->getValue()[0] << ", " << pt->getValue()[1] << ") t = " << pt->getTimestamp() << " w = " << pt->getWeight(pt->getTimestamp()) << "\n";
+   //std::cout << "(" << uniqueId << ")\tCould not find local point (" << pt->getValue()[0] << ", " << pt->getValue()[1] << ") t = " << pt->getTimestamp() << " w = " << pt->getWeight(pt->getTimestamp()) << "\n";
    return NULL;
 }
 
@@ -897,7 +909,7 @@ void LeafNode::replaceClusterFromPoint(Cluster* oldClust, Cluster* newClust, Poi
       return;
    }
 
-   std::cout << "(" << uniqueId << ") Cluster replacement running (" << (oldClust == NULL ? 0 : oldClust->getId()) << " => " << (newClust == NULL ? 0 : newClust->getId()) << ")...\n";
+   //std::cout << "(" << uniqueId << ") Cluster replacement running (" << (oldClust == NULL ? 0 : oldClust->getId()) << " => " << (newClust == NULL ? 0 : newClust->getId()) << ")...\n";
    std::queue<Point*> ptQueue;
    Point* localPt = getLocalPoint(pt, pt->getTimestamp());
    bool skipFirstSet = false;
@@ -908,7 +920,7 @@ void LeafNode::replaceClusterFromPoint(Cluster* oldClust, Cluster* newClust, Poi
       ptQueue.push(localPt);
 
       if (isPointBorder(localPt)) {
-         std::cout << "(" << uniqueId << ")\tFound border point during replace.\n";
+         //std::cout << "(" << uniqueId << ")\tFound border point during replace.\n";
          issueClusterReplaceRequest(oldClust, newClust, localPt);
       }
       setPointCluster(localPt, newClust);
@@ -964,7 +976,7 @@ void LeafNode::replaceClusterFromPoint(Cluster* oldClust, Cluster* newClust, Poi
                   if (isPointBorder(tempPt)) {
                      Cell* c = getPointCell(tempPt);
                      if (c != curCell) {
-                        std::cout << "(" << uniqueId << ")\tFound border point during replace. Sending replace request!\n";
+                        //std::cout << "(" << uniqueId << ")\tFound border point during replace. Sending replace request!\n";
                         curCell = c;
                         issueClusterReplaceRequest(oldClust, newClust, tempPt);
                      }
@@ -983,6 +995,7 @@ void LeafNode::replaceClusterFromPoint(Cluster* oldClust, Cluster* newClust, Poi
 double LeafNode::addToNeighbors(Point* pt, unsigned long time) {
    double count = 0;
    double weight = pt->getWeight(time);
+   Cell* curCell = NULL;
    std::vector<std::vector<Point*>*> neighborLists;
    //std::cout << "\t(" << uniqueId << ": " << time << ") Adding point to neighbors\n";
    getPointNeighborList(pt, neighborLists, time);
@@ -1010,20 +1023,24 @@ double LeafNode::addToNeighbors(Point* pt, unsigned long time) {
                if (tempPt->getNWeight(time) >= minPts) {
                   //std::cout << "Point joining cluster!\n";
                   std::vector<Cluster*> clusters = getNeighborClusters(tempPt, time);
+                  Cell* c = getPointCell(tempPt);
                   //std::cout << "Got " << clusters.size() << " neighbor clusters!\n";
                   if (clusters.size() == 0) {
                      makeCluster(tempPt);
-                     if (isPointBorder(tempPt)) {
+                     if (c != curCell && isPointBorder(tempPt)) {
+                        curCell = c;
                         issueClusterReplaceRequest(NULL, tempPt->getCluster(), tempPt);
                      }
                   } else if (clusters.size() == 1) {
                      addToCluster(clusters[0], tempPt);
-                     if (isPointBorder(tempPt)) {
+                     if (c != curCell && isPointBorder(tempPt)) {
+                        curCell = c;
                         issueClusterReplaceRequest(NULL, tempPt->getCluster(), tempPt);
                      }
                   } else {
                      addToCluster(mergeClusters(clusters, tempPt), tempPt);
-                     if (isPointBorder(tempPt)) {
+                     if (c != curCell && isPointBorder(tempPt)) {
+                        curCell = c;
                         issueClusterReplaceRequest(NULL, tempPt->getCluster(), tempPt);
                      }
                   }
@@ -1137,6 +1154,7 @@ void LeafNode::getPointNeighborList(Point* point, std::vector<std::vector<Point*
             double w = tempPt->getWeight(time);
             if (w < ptRemovalThreshold) {
                setPointCluster(tempPt, NULL);
+               nPoints--;
                delete tempPt;
                list->erase(list->begin() + j);
                j--;
