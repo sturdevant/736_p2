@@ -18,9 +18,15 @@ using namespace MRN;
 
 #define N_DIMENSIONS 2
 #define DIM_BUFFER_SIZE 512
-#define SNAPSHOT_INTERVAL 12000000
-#define LAST_TICK 1449214800000//1448512740000//1447052505000
-#define FIRST_TICK 1448997900000//1448430300000//1446841305000
+#define SNAPSHOT_INTERVAL 30000
+#define LAST_TICK 1447052505000
+#define FIRST_TICK 1446841305000
+#define MAX_NODES 64
+#define TICK_REDUCTION_FACTOR 0.90
+#define MAX_RT 2.0
+
+unsigned long responseCount[MAX_NODES];
+double totalNodeResponseTime[MAX_NODES];
                    
 Network * net;
 Communicator* comm_BC; 
@@ -33,16 +39,16 @@ void* startPolygonQueryThread(void* filename);
 
 // These globals will be set before any threads and are read-only, making them
 // safe for reading in each thread.
-unsigned long ticksPerSec = 6000000;
+unsigned long ticksPerSec = 30000;
 int logging;
 
 unsigned long tick = FIRST_TICK;
-unsigned long tickResolution = 40000;//288 * ticksPerSec;
+unsigned long tickResolution = 48000;
 unsigned long nextSnapshotTime = FIRST_TICK + SNAPSHOT_INTERVAL;
 
-double eps = 0.65;
-double minPts = 75.0;
-double decayFactor = 0.982;
+double eps = 0.5;
+double minPts = 100.0;
+double decayFactor = 0.99;
 double delthresh = 0.05;
 double xMin = 24.4;
 double xMax = 49.4;
@@ -67,6 +73,17 @@ unsigned long getNewRequestId() {
    static unsigned long nextReqId = 0;
    nextReqId++;
    return nextReqId;
+}
+
+bool slowdown() {
+   bool slow = false;
+   for (int i = 0; i < MAX_NODES; i++) {
+      slow |= responseCount[i] != 0 
+               && totalNodeResponseTime[i] / responseCount[i] < MAX_RT;
+      responseCount[i] = 0;
+      totalNodeResponseTime[i] = 0;
+   }
+   return slow;
 }
 
 void frontEndSnapshotRequest() {
@@ -205,7 +222,7 @@ void initMRNet(double eps,
                double yMax) {
    int retval;
    const char* topology_file = 
-      "/u/s/t/sturdeva/public/736/736_p2/mrnet/topology.top";
+      "/u/s/t/sturdeva/public/736/736_p2/mrnet/ntop.top";
    const char* backend_exe = 
       "/u/s/t/sturdeva/public/736/736_p2/mrnet/IntegerAddition_BE";
    const char* so_file = 
@@ -405,6 +422,10 @@ int main(int argc, char** argv) {
       totalResponses = 0;
       queriesSent = 0;
       replaysSent = 0;
+      if (slowdown()) {
+         std::cout << "Slowing down! New speed = " << ticksPerSec << "ticks/sec\n";
+         ticksPerSec *= TICK_REDUCTION_FACTOR;
+      }
       tick += ticksPerSec;
       pthread_cond_broadcast(&timeCond);
       pthread_mutex_unlock(&timeLock);
@@ -422,7 +443,7 @@ int main(int argc, char** argv) {
       pthread_join(threads[threadCount - 1], NULL);
    }
 
-   printf("Client finished.\n");
+   printf("Client finished. Final ticks/sec = %ld\n", ticksPerSec);
    return 0;
 }
 

@@ -136,8 +136,6 @@ void TreeInit(std::vector< MRN::PacketPtr >& packets_in,
          aMaxes[0] = axMax;
          aMaxes[1] = ayMax;
 
-         if (r > 17)
-            std::cout << "Filter rank = " << r << " aMins[0] = " << aMins[0] << " aMaxes[0] = " << aMaxes[0] << " aMins[1] = " << aMins[1] << " aMaxes[1] = " << aMaxes[1] << "\n";
 
          double caMins[nChildren * 2], caMaxes[nChildren * 2];
 

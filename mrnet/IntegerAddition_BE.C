@@ -168,8 +168,8 @@ int main(int argc, char **argv)
             pt->setWeight(w);
             req = new Request((RequestType)type, pt, l1, l2);
             req->setID(id);
-            if (myRank == 3)
-               std::cout << "(" << r << ")\tGot a stream point!\n";
+            //std::cout << "(" << r << ")\tGot a stream point!\n";
+            //fflush(stdout);
             res = new Response((ResponseType)0, id);
             thisNode->query(req, res);
             delete pt;

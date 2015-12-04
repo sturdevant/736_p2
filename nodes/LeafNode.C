@@ -1,6 +1,9 @@
 
 #include "LeafNode.h"
 
+#define n_GRID_SNAPSHOT
+#define POINT_SNAPSHOT
+
 /*
  * This file provides implementations for a leaf node. The
  * public functions of leaf nodes are described first.
@@ -36,7 +39,9 @@ LeafNode::LeafNode(unsigned int nDims,
    this->uniqueId = uniqueId;
    this->ptRemovalThreshold = ptRemovalThresh;
    this->mins = (double*)malloc(nDims * sizeof(double));
+   this->maxes = (double*)malloc(nDims * sizeof(double));
    bcopy(mins, this->mins, nDims * sizeof(double));
+   bcopy(maxes, this->maxes, nDims * sizeof(double));
    this->decay = decay;
    this->requestFunc = requestFunc;
    this->responseFunc = responseFunc;
@@ -96,11 +101,11 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
    switch(t) {
    case REQUEST_TYPE_ADD_POINT:
       //std::cout << "TIME = " << pt->getTimestamp() << " nextPrintTime = " << nextPrintTime << "\n";
-      if (pt->getTimestamp() > nextPrintTime) {
-         nextPrintTime = pt->getTimestamp() + printTimeInterval;
-         //std::cout << "(" << uniqueId << ") ADD QUERY "  << req->getID() 
-         //          << " at time = " << pt->getTimestamp() << "!\n";
-      }
+      //if (pt->getTimestamp() > nextPrintTime) {
+         //nextPrintTime = pt->getTimestamp() + printTimeInterval;
+      //   std::cout << "(" << uniqueId << ") ADD QUERY "  << req->getID() 
+      //             << " at time = " << pt->getTimestamp() << "!\n";
+      //}
       addsSinceLastReport++;
       return handleAdd(req, res);
    case REQUEST_TYPE_POINT_DATA:
@@ -172,6 +177,7 @@ void LeafNode::indexToDArray(unsigned int index, double* d) {
 ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    
    unsigned long time = req->getPoint()->getTimestamp();
+
    char ptFilename[80], assignFilename[80];
    snprintf(ptFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/results/LN_points_%d_%ld", uniqueId, time);
    snprintf(assignFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/results/LN_assigns_%d_%ld", uniqueId, time);
@@ -182,9 +188,9 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    snapshot(pFile, aFile);
    fclose(pFile);
    fclose(aFile);
-
+ 
    char statsFilename[80];
-   snprintf(statsFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/results/LN_stats_%d_%ld", uniqueId, time);
+   snprintf(statsFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/testing/results/LN_stats_%d_%ld", uniqueId, time);
    FILE* sFile;
    sFile = fopen(statsFilename, "w");
    fprintf(sFile, "Filtered: %ld\n", queriesFilteredSinceLastReport);
@@ -203,35 +209,39 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    addsSinceLastReport = 0;
    nextPrintTime = 0;
    
-   #ifdef GRID_ON_SNAPSHOT
- 
+   #ifdef GRID_SNAPSHOT
    char gridFilename[80];
    snprintf(gridFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/results/LN_grid_%d_%ld", uniqueId, time);
    FILE* gridFile = fopen(gridFilename, "w");
    double* tmpVals = (double*)malloc(2 * sizeof(double));
    Point* pt = new Point(tmpVals, 1.0, time);
 
-   double* x = &(pt->getValue()[0]);
-   double* y = &(pt->getValue()[1]);
+   double* x = pt->getValue();
+   double* y = (x + 1);
    
    for (*x = mins[0] + eps / 6.0; (*x) < maxes[0]; (*x) += eps / 3.0) {
       for (*y = mins[1] + eps / 6.0; (*y) < maxes[1]; (*y) += eps / 3.0) {
-         std::vector<Cluster*> clusters = getNeighborClusters(pt, time);
-         std::cout << "(" << uniqueId << ") Printing to grid!\n";
-         fprintf(
-            gridFile, 
-            "%lf,%lf,%ld\n",
-            *x, *y, 
-            (clusters.size() > 0 ? clusters[0]->getId() : 0)
-         );
+         Cell* c = getPointCell(pt);
+         if (c != NULL && c->isAssigned()) {
+            std::vector<Cluster*> clusters = getNeighborClusters(pt, time);
+            if (clusters.size() > 0) {
+               fprintf(
+                  gridFile, 
+                  "%lf,%lf,%ld\n",
+                  *x, *y, 
+                  (clusters.size() > 0 ? clusters[0]->getId() : 0)
+               );
+            }
+      }
       }
    }
   
    fclose(gridFile);
    free(tmpVals);
    delete pt;
-
+   
    #endif
+
    
    return RETURN_CODE_NO_ERROR;
 }
