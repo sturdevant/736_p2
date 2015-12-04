@@ -34,7 +34,7 @@ public:
 
    ~LeafNode();
    ReturnCode query(Request* req, Response* res);
-   void snapshot(FILE* ptFile, FILE* assignmentFile);
+   void snapshot(FILE* ptFile, FILE* assignmentFile, unsigned long time);
    unsigned long getNPoints(void) { return nPoints; }
 
 private:

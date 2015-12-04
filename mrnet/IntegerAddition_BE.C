@@ -142,6 +142,7 @@ int main(int argc, char **argv)
             thisNode->query(req, &res);
             break;//*/
         case PROT_EXIT:
+            fflush(stdout);
             if( stream->send(tag, "%d", 0) == -1 ) {
                 fprintf( stderr, "BE: stream::send(%%s) failure in PROT_EXIT\n" );
                 break;

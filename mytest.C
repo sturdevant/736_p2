@@ -211,25 +211,25 @@ main(int argc, char** argv) {
 
    FILE* file = fopen("snapshot1", "w");
    FILE* file2 = fopen("assigns", "w");
-   n.snapshot(file, file2);
+   n.snapshot(file, file2, runs - 1);
    fclose(file);
    fclose(file2);
 
    file = fopen("snapshot2", "w");
    file2 = fopen("assigns2", "w");
-   n2.snapshot(file, file2);
+   n2.snapshot(file, file2, runs - 1);
    fclose(file);
    fclose(file2);
 
    file = fopen("snapshot3", "w");
    file2 = fopen("assigns3", "w");
-   n3.snapshot(file, file2);
+   n3.snapshot(file, file2, runs - 1);
    fclose(file);
    fclose(file2);
 
    file = fopen("snapshot4", "w");
    file2 = fopen("assigns4", "w");
-   n4.snapshot(file, file2);
+   n4.snapshot(file, file2, runs - 1);
    fclose(file);
    fclose(file2);
    //*/ 

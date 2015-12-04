@@ -56,6 +56,9 @@ LeafNode::LeafNode(unsigned int nDims,
    this->cells = (Cell**)malloc((maxIndex + 1) * sizeof(Cell*));
    for (unsigned int i = 0; i <= maxIndex; i++) {
       cells[i] = new Cell();
+      cells[i]->setAssigned(false);
+      cells[i]->setShadow(false);
+      cells[i]->setFringe(false);
    }
    assignCells(assignedMins, assignedMaxes);
 
@@ -131,8 +134,9 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
    return RETURN_CODE_BAD_REQUEST_TYPE;
 }
 
-void LeafNode::snapshot(FILE* ptFile, FILE* assignmentFile) {
+void LeafNode::snapshot(FILE* ptFile, FILE* assignmentFile, unsigned long time) {
 
+   unsigned long nWritten = 0;
    double* d = (double*)malloc(dims * sizeof(double));
    for (unsigned int i = 0; i <= maxIndex; i++) { 
 
@@ -151,13 +155,25 @@ void LeafNode::snapshot(FILE* ptFile, FILE* assignmentFile) {
       }
       fprintf(assignmentFile, "%lf,%lf,%d\n", d[0], d[1], flag);
 
-      std::vector<Point*>* points = cells[i]->getPointVector();
-      for (unsigned int j = 0; j < points->size(); j++) {
-         Point* pt = (*points)[j];
-         Cluster* clust = pt->getCluster();
-         fprintf(ptFile, "%lu:%lf,%lf,%lu,%lf,%lf\n", pt->getTimestamp(), pt->getValue()[0], pt->getValue()[1], clust == NULL ? 0L : clust->getId(), pt->getWeight(pt->getTimestamp()), pt->getNWeight(pt->getTimestamp()));
+      std::vector<std::vector<Point*>*> neighborLists;
+      Point* testPt = new Point(d, time, time);
+      getPointNeighborList(testPt, neighborLists, time);
+      
+      if (cells[i] != NULL && !cells[i]->isShadow()) {
+         std::vector<Point*>* points = cells[i]->getPointVector();
+         for (unsigned int j = 0; j < points->size(); j++) {
+            Point* pt = (*points)[j];
+            Cluster* clust = pt->getCluster();
+            clust = verifyCluster(clust, pt, time);
+            nWritten++;
+            fprintf(ptFile, "%lu:%lf,%lf,%lu,%lf,%lf\n", pt->getTimestamp(), pt->getValue()[0], pt->getValue()[1], clust == NULL ? 0L : clust->getId(), pt->getWeight(pt->getTimestamp()), pt->getNWeight(pt->getTimestamp()));
+            fflush(ptFile);
+         }
       }
+      delete testPt;
    }
+   std::cout << "(" << uniqueId << ": " << time << ") Number of points written = " << nWritten << "\n";
+   fflush(stdout);
 
    free(d);
 }
@@ -175,7 +191,9 @@ void LeafNode::indexToDArray(unsigned int index, double* d) {
 // TODO: Thread starting function. (static?)
 
 ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
-   
+  
+   #ifdef POINT_SNAPSHOT
+
    unsigned long time = req->getPoint()->getTimestamp();
 
    char ptFilename[80], assignFilename[80];
@@ -185,7 +203,7 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    pFile = fopen(ptFilename, "w");
    FILE* aFile;
    aFile = fopen(assignFilename, "w");
-   snapshot(pFile, aFile);
+   snapshot(pFile, aFile, time);
    fclose(pFile);
    fclose(aFile);
  
@@ -201,6 +219,7 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    fprintf(sFile, "Total Points: %ld\n", nPoints);
    fclose(sFile);
 
+   #endif
 
    queriesFilteredSinceLastReport = 0;
    shadowUpdatesSinceLastReport = 0;
@@ -489,7 +508,7 @@ ReturnCode LeafNode::handleAdd(Request* req, Response* res) {
    
    //std::cout << "Adding point to neighbors...\n";
    addToNeighbors(pt, time);
-/*
+
    Point* lpt = getLocalPoint(pt, time);
    if (lpt != NULL) {
       lpt->setWeight(lpt->getWeight(time) + pt->getWeight(time));
@@ -757,7 +776,7 @@ Cluster* LeafNode::verifyCluster(Cluster* clust, Point* pt, unsigned long time) 
    pt->setNWeight(pt->getNWeight(time));
    pt->setTimestamp(time);
    if (pt->getNWeight(time) < minPts) {
-      std::cout << "Point fell out of cluster.\n";
+      //std::cout << "Point fell out of cluster.\n";
       return NULL;
    }
 
@@ -942,24 +961,6 @@ void LeafNode::replaceClusterFromPoint(Cluster* oldClust, Cluster* newClust, Poi
    while (!ptQueue.empty()) {
       Point* curPt = ptQueue.front();
       ptQueue.pop();
-      /*
-      if (first && !skipFirstSet) {
-         setPointCluster(curPt, newClust);
-         if (isPointBorder(curPt)) {
-            std::cout << "(" << uniqueId << ")\tFound border point during replace. Sending replace request!\n";
-            issueClusterReplaceRequest(oldClust, newClust, curPt);
-         }
-      } else if (!first) {
-         if (isPointBorder(curPt)) {
-            Cell* c = getPointCell(curPt);
-            if (c != curCell) {
-               std::cout << "(" << uniqueId << ")\tFound border point during replace. Sending replace request!\n";
-               curCell = c;
-               issueClusterReplaceRequest(oldClust, newClust, curPt);
-            }
-         }
-      }
-      */
       first = false;
       std::vector<std::vector<Point*>*> neighborLists;
       getPointNeighborList(curPt, neighborLists, pt->getTimestamp());
@@ -971,14 +972,6 @@ void LeafNode::replaceClusterFromPoint(Cluster* oldClust, Cluster* newClust, Poi
          for (unsigned int j = 0; j < ptList->size(); j++) {
             Point* tempPt = (*ptList)[j];
             double w = tempPt->getWeight(pt->getTimestamp());
-            if (w < ptRemovalThreshold) {
-               setPointCluster(tempPt, NULL);
-               delete tempPt;
-               ptList->erase(ptList->begin() + j);
-               j--;
-               continue;
-            }
-
 
             if (curPt->isNeighbor(tempPt)) {
                Cluster* clust = tempPt->getCluster();
@@ -1021,12 +1014,7 @@ double LeafNode::addToNeighbors(Point* pt, unsigned long time) {
          //std::cout << "Summing points...\n";
          Point* tempPt = (*ptList)[j];
          double w = tempPt->getWeight(time);
-         if (w < ptRemovalThreshold) {
-            setPointCluster(tempPt, NULL);
-            delete tempPt;
-            ptList->erase(ptList->begin() + j);
-            j--;
-         } else if (pt->isNeighbor(tempPt)) {
+         if (pt->isNeighbor(tempPt)) {
             if (tempPt->getCluster() == NULL) {
                tempPt->addNWeight(weight, time);
                //std::cout << "N weight = " << tempPt->getNWeight(time) << "\n";
@@ -1129,12 +1117,7 @@ double LeafNode::countNeighbors(Point* pt, unsigned long time) {
       for (unsigned int j = 0; j < ptList->size(); j++) {
          Point* tempPt = (*ptList)[j];
          double w = tempPt->getWeight(time);
-         if (w < ptRemovalThreshold) {
-            setPointCluster(tempPt, NULL);
-            delete tempPt;
-            ptList->erase(ptList->begin() + j);
-            j--;
-         } else if (pt->isNeighbor(tempPt)) {
+         if (pt->isNeighbor(tempPt)) {
             count += w;
          }
       }
@@ -1158,16 +1141,16 @@ void LeafNode::getPointNeighborList(Point* point, std::vector<std::vector<Point*
          neighborList.push_back(list);
          for (unsigned int j = 0; j < list->size(); j++) {
             Point* tempPt = (*list)[j];
-            tempPt->setWeight(tempPt->getWeight(time));
+            double w = tempPt->getWeight(time);
+            tempPt->setWeight(w);
             tempPt->setNWeight(tempPt->getNWeight(time));
             tempPt->setTimestamp(time);
-            double w = tempPt->getWeight(time);
             if (w < ptRemovalThreshold) {
                setPointCluster(tempPt, NULL);
                nPoints--;
-               delete tempPt;
                list->erase(list->begin() + j);
                j--;
+               delete tempPt;
             } else if (tempPt->getNWeight(time) < minPts ) {
                setPointCluster(tempPt, NULL);
             }   

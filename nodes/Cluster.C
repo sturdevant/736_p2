@@ -45,7 +45,7 @@ double Cluster::getSqrDistToCheckPoint(Point* pt, int* retIndex) {
 }
 
 void Cluster::addCheckPoint(Point* pt) {
-   std::cout << "Checkpoint added!\n";
+   //std::cout << "Checkpoint added!\n";
    checkPoints.push_back(new Point(*pt));
 }
 

@@ -18,10 +18,21 @@ using namespace MRN;
 
 #define N_DIMENSIONS 2
 #define DIM_BUFFER_SIZE 512
-#define SNAPSHOT_INTERVAL 12000000
-#define LAST_TICK 1449214800000//1448512740000//1447052505000
-#define FIRST_TICK 1448997900000//1448430300000//1446841305000
-                   
+
+#define WW
+
+#define SNAPSHOT_INTERVAL 96000
+#define LAST_TICK 1447052505000
+#define FIRST_TICK 1446841305000
+
+#ifdef WW
+                  
+   #define SNAPSHOT_INTERVAL 4000000
+   #define LAST_TICK 1449214800000
+   #define FIRST_TICK 1448997900000
+
+#endif
+
 Network * net;
 Communicator* comm_BC; 
 Stream* stream_Stream;
@@ -33,17 +44,17 @@ void* startPolygonQueryThread(void* filename);
 
 // These globals will be set before any threads and are read-only, making them
 // safe for reading in each thread.
-unsigned long ticksPerSec = 6000000;
+unsigned long ticksPerSec = 2000000;//24000
 int logging;
 
 unsigned long tick = FIRST_TICK;
-unsigned long tickResolution = 40000;//288 * ticksPerSec;
+unsigned long tickResolution = 400000;//6000
 unsigned long nextSnapshotTime = FIRST_TICK + SNAPSHOT_INTERVAL;
 
-double eps = 0.65;
-double minPts = 75.0;
-double decayFactor = 0.982;
-double delthresh = 0.05;
+double eps = 1.10;//35;
+double minPts = 50.0;//14;
+double decayFactor = 0.975;
+double delthresh = 0.04;
 double xMin = 24.4;
 double xMax = 49.4;
 double yMin = -124.9;
@@ -63,19 +74,41 @@ typedef struct threadargs {
    void* output;
 } threadargs;
 
+unsigned long getClusteringTime() {
+   return (tick - FIRST_TICK) / tickResolution;
+}
+
 unsigned long getNewRequestId() {
    static unsigned long nextReqId = 0;
    nextReqId++;
    return nextReqId;
 }
 
+void broadcastExit() {
+   unsigned long id = getNewRequestId();
+   MRN::PacketPtr packet(
+      new MRN::Packet(stream_Stream->get_Id(),
+         PROT_EXIT, REQUEST_FORMAT_STRING, 
+         id, REQUEST_TYPE_SNAPSHOT, getClusteringTime(), 
+         1.0, 1.0, 1.0, 1.0, 1, 1
+      )
+   );
+
+   if (stream_Stream->send(packet) == -1) {
+      std::cout << "Error in sending exit\n";
+   }
+
+   if (stream_Stream->flush() == -1)
+      std::cout << "Error in flushing stream\n";
+}
+
 void frontEndSnapshotRequest() {
-   std::cout << "Getting snapshot at " << tick / tickResolution << "\n";
+   std::cout << "Getting snapshot at " << getClusteringTime() << "\n";
    unsigned long id = getNewRequestId();
    MRN::PacketPtr packet(
       new MRN::Packet(stream_Stream->get_Id(),
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_SNAPSHOT, tick / tickResolution, 
+         id, REQUEST_TYPE_SNAPSHOT, getClusteringTime(), 
          1.0, 1.0, 1.0, 1.0, 1, 1
       )
    );
@@ -104,7 +137,7 @@ void frontEndPointRequest(double* pt) {
    responseQueue.add(idPtr);
    if (stream_Stream->send(
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_POINT_DATA, tick / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
+         id, REQUEST_TYPE_POINT_DATA, getClusteringTime(), pt[0], pt[1], 1.0, 0.0, 0, 0
        ) 
        == -1) {
       std::cout << "Error in sending point request\n";
@@ -124,7 +157,7 @@ void frontEndPointStream(double* pt) {
 
    if (stream_Stream->send(
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_ADD_POINT, (tick - FIRST_TICK) / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
+         id, REQUEST_TYPE_ADD_POINT, getClusteringTime(), pt[0], pt[1], 1.0, 0.0, 0, 0
        ) 
        == -1) {
       std::cout << "Error in sending stream point\n";
@@ -421,6 +454,8 @@ int main(int argc, char** argv) {
    for (; threadCount > 0; threadCount--) {
       pthread_join(threads[threadCount - 1], NULL);
    }
+
+   broadcastExit();
 
    printf("Client finished.\n");
    return 0;
