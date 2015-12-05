@@ -10,9 +10,10 @@ for line in f:
    print val
    print val.isspace()
    if not "nan" in val and not val == "" and not val.isspace():
-       times.append(float(val))
+       if float(val) < 200000000:
+           times.append(float(val))
 f.close()
 
-n, bins, patches = plt.hist(times, 5)
-plt.plot(bins)
+n, bins, patches = plt.hist(times, 50)
+plt.title("1x4 Response time histogram")
 plt.show()

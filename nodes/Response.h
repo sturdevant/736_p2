@@ -4,7 +4,7 @@
 
 #include "ResponseType.h"
 
-#define RESPONSE_FORMAT_STRING "%ld %ld %ld %lf %ld"
+#define RESPONSE_FORMAT_STRING "%ld %ld %ld %lf %ld %ld"
 
 class Response {
 public:

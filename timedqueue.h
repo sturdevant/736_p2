@@ -20,6 +20,8 @@ public:
    ~TimedQueue();
    unsigned long remove(void* element);
    void add(void* element);
+   unsigned long getCount(){return count;}
+
 private:
    void* buf;
    memslab_t* freeHead;

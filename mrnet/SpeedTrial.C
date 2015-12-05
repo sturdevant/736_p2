@@ -18,12 +18,14 @@ using namespace MRN;
 
 #define N_DIMENSIONS 2
 #define DIM_BUFFER_SIZE 512
-#define SNAPSHOT_INTERVAL 30000
-#define LAST_TICK 1447052505000
+#define SNAPSHOT_INTERVAL 1
+#define LAST_TICK  1446842565000//1446850105000//1447052505000
 #define FIRST_TICK 1446841305000
 #define MAX_NODES 64
-#define TICK_REDUCTION_FACTOR 0.90
-#define MAX_RT 2.0
+#define TICK_REDUCTION_FACTOR 0.95
+#define TICK_INCREASE_FACTOR 1.02
+#define MAX_RT 2000000000
+#define LOW_RT 250000000
 
 unsigned long responseCount[MAX_NODES];
 double totalNodeResponseTime[MAX_NODES];
@@ -31,7 +33,8 @@ double totalNodeResponseTime[MAX_NODES];
 Network * net;
 Communicator* comm_BC; 
 Stream* stream_Stream;
-TimedQueue responseQueue(sizeof(unsigned long), 20000);
+Stream* snapshot_Stream;
+TimedQueue responseQueue(sizeof(unsigned long), 2000000);
 
 void* startPointQueryThread(void* filename);
 void* startStreamThread(void* filename);
@@ -43,17 +46,20 @@ unsigned long ticksPerSec = 30000;
 int logging;
 
 unsigned long tick = FIRST_TICK;
-unsigned long tickResolution = 48000;
+unsigned long tickResolution = 1000;
 unsigned long nextSnapshotTime = FIRST_TICK + SNAPSHOT_INTERVAL;
 
 double eps = 0.5;
 double minPts = 100.0;
-double decayFactor = 0.99;
-double delthresh = 0.05;
+double decayFactor = 0.9993;
+double delthresh = 0.1;
 double xMin = 24.4;
 double xMax = 49.4;
 double yMin = -124.9;
 double yMax = -66.9;
+
+unsigned long nSent = 0;
+unsigned long nBack = 0;
 
 unsigned long totalResponses = 0;
 double totalResponseTime = 0;
@@ -75,53 +81,78 @@ unsigned long getNewRequestId() {
    return nextReqId;
 }
 
-bool slowdown() {
-   bool slow = false;
-   for (int i = 0; i < MAX_NODES; i++) {
-      slow |= responseCount[i] != 0 
-               && totalNodeResponseTime[i] / responseCount[i] < MAX_RT;
+int changeSpeed() {
+   unsigned int max = 0;
+   double maxRT = 0;
+   /*for (int i = 0; i < MAX_NODES; i++) {
+      if (responseCount[i] != 0) {
+         double rt = totalNodeResponseTime[i] / responseCount[i];
+         if (rt > maxRT) {
+            maxRT = rt;
+            max = i;
+         }
+      }
       responseCount[i] = 0;
       totalNodeResponseTime[i] = 0;
+   }//*/
+   if (totalResponses != 0) {
+      maxRT = totalResponseTime / totalResponses;
    }
-   return slow;
+   std::cout << "Queue Length = " << responseQueue.getCount() << " (" << nSent - nBack << " " << nSent << " - " << nBack << ")\n";
+   std::cout << "Max RT = " << maxRT << " by " << max << "\n";
+   
+   if (maxRT > MAX_RT) {
+      return -1;
+   }
+
+   if (maxRT != 0 && maxRT < LOW_RT) {
+      return 1;
+   }
+
+   return 0;
 }
 
 void frontEndSnapshotRequest() {
-   std::cout << "Getting snapshot at " << tick / tickResolution << "\n";
+   //std::cout << "Getting snapshot at " << (tick - FIRST_TICK) / tickResolution << "\n";
    unsigned long id = getNewRequestId();
+   for (unsigned int i = 0; i < 16; i++) {
+      responseQueue.add(&id);
+   }
    MRN::PacketPtr packet(
-      new MRN::Packet(stream_Stream->get_Id(),
+      new MRN::Packet(snapshot_Stream->get_Id(),
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_SNAPSHOT, tick / tickResolution, 
+         id, REQUEST_TYPE_SNAPSHOT, (tick - FIRST_TICK) / tickResolution, 
          1.0, 1.0, 1.0, 1.0, 1, 1
       )
-   );
+  );
 
-   if (stream_Stream->send(packet) == -1) {
+   if (snapshot_Stream->send(packet) == -1) {
       std::cout << "Error in sending snapshot request\n";
    }
 
    //std::cout << "About to flush snapshot request!\n";
    
-   if (stream_Stream->flush() == -1)
+   if (snapshot_Stream->flush() == -1)
       std::cout << "Error in flushing stream\n";
-   std::cout << "Snapshot request sent!\n";
+
+
    //*/
 }
 
 void frontEndPointRequest(double* pt) {
-  //std::cout << "Read point to request at time " << tick << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
+   //std::cout << "Read point to request at time " << tick << " X = " << pt[0] << " Y = " << pt[1] << std::endl;
    unsigned long id = getNewRequestId();
 
    pthread_mutex_lock(&timeLock);
    queriesSent++;
+   nSent++;
    pthread_mutex_unlock(&timeLock);
 
    unsigned long* idPtr = &id;
-   responseQueue.add(idPtr);
+   //responseQueue.add(idPtr);
    if (stream_Stream->send(
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_POINT_DATA, tick / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
+         id, REQUEST_TYPE_POINT_DATA, (tick - FIRST_TICK) / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
        ) 
        == -1) {
       std::cout << "Error in sending point request\n";
@@ -162,7 +193,7 @@ void* listenStart(void* listenArgs) {
    Stream* stream;
    PacketPtr p;
    double x, y, w, nw;
-   unsigned long id, type, time, l1, l2, clustId;
+   unsigned long id, type, time, l1, l2, clustId, cr;
    while(1) {
       rc = net->recv(&tag, p, &stream);
       if (rc < 0) 
@@ -176,7 +207,24 @@ void* listenStart(void* listenArgs) {
                &id, &type, &time, &x, &y, &w, &nw, &l1, &l2
             );
 
+            if (type == REQUEST_TYPE_SLOWDOWN) {
+               ticksPerSec *= TICK_REDUCTION_FACTOR;
+               std::cout << "RECEIVED SLOW DOWN PACKET!\n";
+               continue;
+            }
+
             if (type == REQUEST_TYPE_SNAPSHOT) {
+               //std::cout << "Got snapshot response!\n";
+               try {
+                  pthread_mutex_lock(&timeLock);
+                  double rt = responseQueue.remove(&id);
+                  totalResponseTime += rt;
+                  totalResponses++;
+                  pthread_mutex_unlock(&timeLock);
+               } catch (const char* c) {
+                  std::cout << c;
+               }
+               continue;
             }
 
             pthread_mutex_lock(&timeLock);
@@ -195,16 +243,20 @@ void* listenStart(void* listenArgs) {
          } else if (tag == PROT_RESPONSE) {
             p->unpack(
                RESPONSE_FORMAT_STRING,
-               &id, &type, &time, &nw, &clustId
+               &id, &type, &time, &nw, &clustId, &cr
             );
-            try {
+            nBack++;
+            /*try {
                pthread_mutex_lock(&timeLock);
-               totalResponseTime += responseQueue.remove(&id);
+               double rt = responseQueue.remove(&id);
+               totalResponseTime += rt;
                totalResponses++;
+               responseCount[cr]++;
+               totalNodeResponseTime[cr] += rt;
                pthread_mutex_unlock(&timeLock);
             } catch (const char* c) {
                std::cout << c;
-            }
+            }//*/
          }
       }
    }
@@ -222,7 +274,7 @@ void initMRNet(double eps,
                double yMax) {
    int retval;
    const char* topology_file = 
-      "/u/s/t/sturdeva/public/736/736_p2/mrnet/ntop.top";
+      "/u/s/t/sturdeva/public/736/736_p2/mrnet/topology.top";
    const char* backend_exe = 
       "/u/s/t/sturdeva/public/736/736_p2/mrnet/IntegerAddition_BE";
    const char* so_file = 
@@ -271,6 +323,11 @@ void initMRNet(double eps,
    std::cout << "X: " << axMin << " to " << axMax << "\n";
    std::cout << "Y: " << ayMin << " to " << ayMax << "\n";
    comm_BC = net->get_BroadcastCommunicator();
+
+   snapshot_Stream = net->new_Stream(comm_BC, 
+                                   TFILTER_NULL, 
+                                   SFILTER_WAITFORALL,
+                                   TFILTER_NULL);
 
    stream_Stream = net->new_Stream(comm_BC, 
                                    filterIds[0], 
@@ -411,20 +468,27 @@ int main(int argc, char** argv) {
          printf("ERROR: Failed to sleep!\n");
       }
       pthread_mutex_lock(&timeLock);
-      fprintf(rtFile, "%ld,%lf,%ld,%ld, %ld\n", 
+      fprintf(rtFile, "%ld,%lf,%ld,%ld,%ld,%ld\n", 
          tick, 
          totalResponseTime / totalResponses, 
          queriesSent, 
          replaysSent, 
-         pointsSent
+         pointsSent,
+         ticksPerSec
       );
+      fflush(rtFile);
+      int spdChange = changeSpeed();
       totalResponseTime = 0;
       totalResponses = 0;
       queriesSent = 0;
       replaysSent = 0;
-      if (slowdown()) {
-         std::cout << "Slowing down! New speed = " << ticksPerSec << "ticks/sec\n";
-         ticksPerSec *= TICK_REDUCTION_FACTOR;
+      std::cout << "time = " << (tick - FIRST_TICK) / tickResolution << " speed = " << ticksPerSec << "\n";
+      if (spdChange == -1) {
+         //ticksPerSec *= TICK_REDUCTION_FACTOR;
+         //std::cout << "Slowing down! New speed = " << ticksPerSec << "ticks/sec\n";
+      } else if (spdChange == 1) {
+         //ticksPerSec *= TICK_INCREASE_FACTOR;
+         //std::cout << "Speed up! New speed = " << ticksPerSec << "ticks/sec\n";
       }
       tick += ticksPerSec;
       pthread_cond_broadcast(&timeCond);
@@ -440,6 +504,7 @@ int main(int argc, char** argv) {
 
    // Wait for each of the child threads to finish.
    for (; threadCount > 0; threadCount--) {
+      pthread_cancel(threads[threadCount - 1]);
       pthread_join(threads[threadCount - 1], NULL);
    }
 
@@ -481,7 +546,7 @@ void* startPointQueryThread(void* arg) {
         
          // This is a timestamp, so we may need to wait.
          unsigned long t = atol(&buf[1]);
-         std::cout << "Timestamp found: " << t << std::endl;
+         //std::cout << "Timestamp found: " << t << std::endl;
          pthread_mutex_lock(&timeLock);
          while (t > tick) {
             // This timestamp hasn't come yet, so we need to go to sleep.

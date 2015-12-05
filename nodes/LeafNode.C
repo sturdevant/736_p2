@@ -2,7 +2,7 @@
 #include "LeafNode.h"
 
 #define n_GRID_SNAPSHOT
-#define POINT_SNAPSHOT
+#define n_POINT_SNAPSHOT
 
 /*
  * This file provides implementations for a leaf node. The
@@ -116,7 +116,23 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
          return RETURN_CODE_NO_ERROR;
       } else {
          queriesSinceLastReport++;
-         return handlePoint(req, res);
+         // TIMER HERE
+         struct timespec ts;
+         struct timespec te;
+
+         int success = clock_gettime(CLOCK_REALTIME, &ts);
+         ReturnCode rc = handlePoint(req, res);
+         success = clock_gettime(CLOCK_REALTIME, &te);
+         unsigned long t1 = ts.tv_sec * 1000000000 + ts.tv_nsec;
+         unsigned long t2 = te.tv_sec * 1000000000 + te.tv_nsec;
+         unsigned long time_elapsed = t2 - t1;
+         // END TIMER HERE
+         if (time_elapsed > 2000000000) {
+
+            Request r(REQUEST_TYPE_SLOWDOWN);
+            requestFunc(0, &r);
+         }
+         return rc;
       }
    case REQUEST_TYPE_POLYGON_DATA:
       return handlePolygon(req, res);
@@ -153,7 +169,7 @@ void LeafNode::snapshot(FILE* ptFile, FILE* assignmentFile, unsigned long time) 
             flag = 3;
          }
       }
-      fprintf(assignmentFile, "%lf,%lf,%d\n", d[0], d[1], flag);
+      //fprintf(assignmentFile, "%lf,%lf,%d\n", d[0], d[1], flag);
 
       std::vector<std::vector<Point*>*> neighborLists;
       Point* testPt = new Point(d, time, time);
@@ -191,10 +207,10 @@ void LeafNode::indexToDArray(unsigned int index, double* d) {
 // TODO: Thread starting function. (static?)
 
 ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
+   unsigned long time = req->getPoint()->getTimestamp();
   
    #ifdef POINT_SNAPSHOT
 
-   unsigned long time = req->getPoint()->getTimestamp();
 
    char ptFilename[80], assignFilename[80];
    snprintf(ptFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/results/LN_points_%d_%ld", uniqueId, time);
@@ -203,10 +219,15 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    pFile = fopen(ptFilename, "w");
    FILE* aFile;
    aFile = fopen(assignFilename, "w");
-   snapshot(pFile, aFile, time);
+   snapshot(pFile, NULL, time);
    fclose(pFile);
    fclose(aFile);
- 
+
+   #endif
+
+   //std::cout << "Got snapshot request!\n";
+   fflush(stdout);
+
    char statsFilename[80];
    snprintf(statsFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/testing/results/LN_stats_%d_%ld", uniqueId, time);
    FILE* sFile;
@@ -219,12 +240,10 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    fprintf(sFile, "Total Points: %ld\n", nPoints);
    fclose(sFile);
 
-   #endif
-
    queriesFilteredSinceLastReport = 0;
    shadowUpdatesSinceLastReport = 0;
    clusterReplacementsSinceLastReport = 0;
-   queriesSinceLastReport = 0;
+   //queriesSinceLastReport = 0;
    addsSinceLastReport = 0;
    nextPrintTime = 0;
    

@@ -39,7 +39,7 @@ ReturnCode fakeResFunc(Response* res) {
          responseStream->get_Id(),
          PROT_RESPONSE,
          RESPONSE_FORMAT_STRING,
-         id, type, time, nw, clustId
+         id, type, time, nw, clustId, myRank
       )
    );
    responseStream->send(new_packet);
@@ -60,6 +60,7 @@ int main(int argc, char **argv)
    unsigned long id, type, time, l1, l2;
    int r;
    Network * net = Network::CreateNetworkBE( argc, argv );
+   myRank = net->get_LocalRank();
    responseStream = net->get_Stream(net->get_LocalRank());
    LeafNode* thisNode;
 
@@ -164,6 +165,18 @@ int main(int argc, char **argv)
                &l1,
                &l2
             );
+            if (type == REQUEST_TYPE_SNAPSHOT) {
+               if (stream->send(p
+               /*MRN::PacketPtr(new MRN::Packet(
+                  PROT_REQUEST, REQUEST_FORMAT_STRING,
+                  id, type, time, ptArr[0], ptArr[1], w, nw, l1, l2))
+                  */) == -1) {
+                  std::cout << "ERROR SENDING SNAPSHOT REQUEST!\n";
+               }
+               if (stream->flush() == -1) {
+                  std::cout << "ERROR FLUSHING SNAPSHOT REQUEST!\n";
+               }
+            }
             pt = new Point(ptArr, 1, time);
             pt->setNWeight(nw);
             pt->setWeight(w);
