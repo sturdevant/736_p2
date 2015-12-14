@@ -12,21 +12,31 @@
 #include "Response.h"
 #include "Request.h"
 #include "IntegerAddition.h"
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 
 using namespace std;
 using namespace MRN;
 
+#define ONE_HOUR 3600000
+
 #define N_DIMENSIONS 2
 #define DIM_BUFFER_SIZE 512
-#define SNAPSHOT_INTERVAL 1
-#define LAST_TICK  1446842565000//1446850105000//1447052505000
-#define FIRST_TICK 1446841305000
+#define FIRST_TICK 1446841305000//1448997780000
+#define LAST_TICK  FIRST_TICK + 60 * ONE_HOUR
+
+#define END_TIME 1800.0l
+
 #define MAX_NODES 64
-#define TICK_REDUCTION_FACTOR 0.95
-#define TICK_INCREASE_FACTOR 1.02
+#define TICK_INCREASE_START 230
+#define TICK_INCREASE_FACTOR (ONE_HOUR / 36000.0l)
+#define TICK_REDUCTION_FACTOR (TICK_INCREASE_FACTOR)
+
 #define MAX_RT 2000000000
 #define LOW_RT 250000000
 
+#define N_LEAF_NODES 4
 unsigned long responseCount[MAX_NODES];
 double totalNodeResponseTime[MAX_NODES];
                    
@@ -38,25 +48,30 @@ TimedQueue responseQueue(sizeof(unsigned long), 2000000);
 
 void* startPointQueryThread(void* filename);
 void* startStreamThread(void* filename);
-void* startPolygonQueryThread(void* filename);
 
 // These globals will be set before any threads and are read-only, making them
 // safe for reading in each thread.
-unsigned long ticksPerSec = 30000;
+double ticksPerSec = ONE_HOUR / 80;//150000.0;
 int logging;
 
 unsigned long tick = FIRST_TICK;
-unsigned long tickResolution = 1000;
-unsigned long nextSnapshotTime = FIRST_TICK + SNAPSHOT_INTERVAL;
+double totalTime = 0;
+unsigned long serverTime = 0;
+unsigned long totalFrontEndRecs = 0;
+bool speedWarning = false;
 
-double eps = 0.5;
-double minPts = 100.0;
-double decayFactor = 0.9993;
+double snapshotInterval = ticksPerSec;//ONE_HOUR;//150000.0;
+double nextSnapshotTime = FIRST_TICK + snapshotInterval;
+double nextStreamTime = FIRST_TICK + ticksPerSec;
+
+double eps = 0.50;
+double minPts = 50.0;
+double decayFactor = 0.99;
 double delthresh = 0.1;
-double xMin = 24.4;
-double xMax = 49.4;
-double yMin = -124.9;
-double yMax = -66.9;
+double xMin = -90;//24;
+double xMax = 90;//50;
+double yMin = -180;//-125;
+double yMax = 180;//-66;
 
 unsigned long nSent = 0;
 unsigned long nBack = 0;
@@ -98,14 +113,12 @@ int changeSpeed() {
    if (totalResponses != 0) {
       maxRT = totalResponseTime / totalResponses;
    }
-   std::cout << "Queue Length = " << responseQueue.getCount() << " (" << nSent - nBack << " " << nSent << " - " << nBack << ")\n";
-   std::cout << "Max RT = " << maxRT << " by " << max << "\n";
    
-   if (maxRT > MAX_RT) {
+   if (maxRT > MAX_RT || responseQueue.getCount() > 1000) {
       return -1;
    }
 
-   if (maxRT != 0 && maxRT < LOW_RT) {
+   if (maxRT != 0 && maxRT < LOW_RT && responseQueue.getCount() < 1000) {
       return 1;
    }
 
@@ -113,19 +126,22 @@ int changeSpeed() {
 }
 
 void frontEndSnapshotRequest() {
-   //std::cout << "Getting snapshot at " << (tick - FIRST_TICK) / tickResolution << "\n";
+   //std::cout << "Sending snapshot!\n";
    unsigned long id = getNewRequestId();
-   for (unsigned int i = 0; i < 16; i++) {
-      responseQueue.add(&id);
+   for (unsigned int i = 0; i < N_LEAF_NODES; i++) {
+      //nSent++;
+      //responseQueue.add(&id);
    }
+   //std::cout << "Added to queue!\n";
    MRN::PacketPtr packet(
       new MRN::Packet(snapshot_Stream->get_Id(),
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_SNAPSHOT, (tick - FIRST_TICK) / tickResolution, 
+         id, REQUEST_TYPE_SNAPSHOT, serverTime, 
          1.0, 1.0, 1.0, 1.0, 1, 1
       )
   );
 
+   //std::cout << "Created packet!\n";
    if (snapshot_Stream->send(packet) == -1) {
       std::cout << "Error in sending snapshot request\n";
    }
@@ -133,7 +149,7 @@ void frontEndSnapshotRequest() {
    //std::cout << "About to flush snapshot request!\n";
    
    if (snapshot_Stream->flush() == -1)
-      std::cout << "Error in flushing stream\n";
+      ;//std::cout << "Error in flushing stream\n";
 
 
    //*/
@@ -149,16 +165,16 @@ void frontEndPointRequest(double* pt) {
    pthread_mutex_unlock(&timeLock);
 
    unsigned long* idPtr = &id;
-   //responseQueue.add(idPtr);
+   responseQueue.add(idPtr);
    if (stream_Stream->send(
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_POINT_DATA, (tick - FIRST_TICK) / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
+         id, REQUEST_TYPE_POINT_DATA, serverTime, pt[0], pt[1], 1.0, 0.0, 0, 0
        ) 
        == -1) {
       std::cout << "Error in sending point request\n";
    }
    if (stream_Stream->flush() == -1)
-      std::cout << "Error in flushing stream\n";
+      ;//std::cout << "Error in flushing stream\n";
 }
 
 void frontEndPointStream(double* pt) {
@@ -172,7 +188,7 @@ void frontEndPointStream(double* pt) {
 
    if (stream_Stream->send(
          PROT_REQUEST, REQUEST_FORMAT_STRING, 
-         id, REQUEST_TYPE_ADD_POINT, (tick - FIRST_TICK) / tickResolution, pt[0], pt[1], 1.0, 0.0, 0, 0
+         id, REQUEST_TYPE_ADD_POINT, serverTime, pt[0], pt[1], 1.0, 0.0, 0, 0
        ) 
        == -1) {
       std::cout << "Error in sending stream point\n";
@@ -194,11 +210,42 @@ void* listenStart(void* listenArgs) {
    PacketPtr p;
    double x, y, w, nw;
    unsigned long id, type, time, l1, l2, clustId, cr;
+   std::cout << "LISTENER PID = " << syscall(SYS_gettid) << "\n";
+   struct timespec t1, t2;
+   clock_gettime(CLOCK_REALTIME, &t2);
+   struct timespec lastGoodTime;
+   lastGoodTime.tv_sec = t2.tv_sec;
+   lastGoodTime.tv_nsec = t2.tv_nsec;
+   
+   
+   
    while(1) {
+
+      clock_gettime(CLOCK_REALTIME, &t1);
+      
       rc = net->recv(&tag, p, &stream);
+      clock_gettime(CLOCK_REALTIME, &t2);
+      unsigned long recTime = t2.tv_nsec - t1.tv_nsec + 1000000000L * (t2.tv_sec - t1.tv_sec);
+      if (recTime > 100000) {
+         lastGoodTime.tv_sec = t2.tv_sec;
+         lastGoodTime.tv_nsec = t2.tv_nsec;
+      }
+
+      unsigned long timeSinceGood = t2.tv_nsec - lastGoodTime.tv_nsec + 1000000000L * (t2.tv_sec - lastGoodTime.tv_sec);
+      if (timeSinceGood > 1000000000L) {
+         if (ticksPerSec > TICK_REDUCTION_FACTOR * 2) {
+            std::cout << "FRONT END SLOW DOWN!\n";
+            ticksPerSec -= TICK_REDUCTION_FACTOR;
+         }
+         lastGoodTime.tv_sec = t2.tv_sec;
+         lastGoodTime.tv_nsec = t2.tv_nsec;
+      }
+      
+      
       if (rc < 0) 
          std::cout << "Error receiving in frontend listenStart\n";
       else {
+         totalFrontEndRecs++;
          //std::cout << "Successfully received in frontend\n";
          if (tag == PROT_REQUEST) {
                
@@ -208,18 +255,25 @@ void* listenStart(void* listenArgs) {
             );
 
             if (type == REQUEST_TYPE_SLOWDOWN) {
-               ticksPerSec *= TICK_REDUCTION_FACTOR;
+               if (ticksPerSec > TICK_REDUCTION_FACTOR * 2) {
+                  ticksPerSec -= TICK_REDUCTION_FACTOR;
+               }
+               snapshotInterval *= TICK_REDUCTION_FACTOR;
                std::cout << "RECEIVED SLOW DOWN PACKET!\n";
+               continue;
+            } else if (type == REQUEST_TYPE_SPEED_WARNING) {
+               speedWarning = true;
                continue;
             }
 
             if (type == REQUEST_TYPE_SNAPSHOT) {
                //std::cout << "Got snapshot response!\n";
                try {
+                  //nBack += N_LEAF_NODES;
                   pthread_mutex_lock(&timeLock);
-                  double rt = responseQueue.remove(&id);
-                  totalResponseTime += rt;
-                  totalResponses++;
+                  //double rt = //responseQueue.remove(&id);
+                  //totalResponseTime += rt;
+                  //totalResponses++;
                   pthread_mutex_unlock(&timeLock);
                } catch (const char* c) {
                   std::cout << c;
@@ -246,7 +300,7 @@ void* listenStart(void* listenArgs) {
                &id, &type, &time, &nw, &clustId, &cr
             );
             nBack++;
-            /*try {
+            try {
                pthread_mutex_lock(&timeLock);
                double rt = responseQueue.remove(&id);
                totalResponseTime += rt;
@@ -256,7 +310,7 @@ void* listenStart(void* listenArgs) {
                pthread_mutex_unlock(&timeLock);
             } catch (const char* c) {
                std::cout << c;
-            }//*/
+            }//
          }
       }
    }
@@ -274,7 +328,7 @@ void initMRNet(double eps,
                double yMax) {
    int retval;
    const char* topology_file = 
-      "/u/s/t/sturdeva/public/736/736_p2/mrnet/topology.top";
+      "/u/s/t/sturdeva/public/736/736_p2/mrnet/topologies/ntop.2";
    const char* backend_exe = 
       "/u/s/t/sturdeva/public/736/736_p2/mrnet/IntegerAddition_BE";
    const char* so_file = 
@@ -366,39 +420,27 @@ void initMRNet(double eps,
 
 
 int main(int argc, char** argv) {
-   if (argc < 4) {
-      printf("usage: client <timestep> [-log] {[<service type> <filename> [<logfilename>], [...]...}\n");
-      printf("timestep is in units of ticks/second\n");
+   if (argc < 3) {
+      printf("usage: client {[<service type> <filename>], [...]...}\n");
       printf("service types:\n \t\"-point\" query points\n");
       printf("\t\"-stream\" stream, a source of data points\n");
-      printf("\t\"-polygon\" query for polygons\n");
-      printf("If -log is specified, you must provide a log filename for \"-point\" and \"-polygon\" requests\n");
       exit(-1);
    }
    
+   std::cout << "PARENT PID = " << syscall(SYS_gettid) << "\n";
+
    initMRNet(eps, minPts, decayFactor, delthresh, xMin, xMax, yMin, yMax);
    pthread_t* listenThread = (pthread_t*)malloc(sizeof(pthread_t));
    int retval = pthread_create(listenThread, 
                                NULL, 
                                &listenStart, 
                                NULL);
-   logging = 0;
-   int i = 2;
-   if (!strcmp(argv[i], "-log")) {
-      i++;
-      logging = 1;
-   }
-
+   int i = 1;
    int threadCount = 0;
 
    // Allocate an array equal to the largest number of threads possible.
-   pthread_t* threads = (pthread_t*)malloc((argc / 2 - 1) * sizeof(pthread_t));
-   threadargs* tArgs = (threadargs*)malloc((argc / 2 - 1) * sizeof(threadargs));
-
-   if (tArgs == NULL || threads == NULL) {
-      printf("ERROR: Could not allocate memory for threads!\n");
-      exit(-1);
-   }
+   pthread_t* threads = (pthread_t*)malloc((argc / 2) * sizeof(pthread_t));
+   threadargs* tArgs = (threadargs*)malloc((argc / 2) * sizeof(threadargs));
    
    void* (*entry)(void*);
    while (i < argc) {
@@ -407,13 +449,7 @@ int main(int argc, char** argv) {
          // Create thread to handle point queries
          entry = &startPointQueryThread;
          tArgs[threadCount].input = argv[i + 1];
-         if (logging) {
-            tArgs[threadCount].output = argv[i + 2];
-            i += 3;
-         } else {
-            tArgs[threadCount].output = NULL;
-            i += 2;
-         }
+         tArgs[threadCount].output = NULL;
 
       } else if (!strcmp(argv[i], "-stream")) {
 
@@ -421,28 +457,7 @@ int main(int argc, char** argv) {
          entry = &startStreamThread;
          tArgs[threadCount].input = argv[i + 1];
          tArgs[threadCount].output = NULL;
-         i += 2;
-         
-      } else if (!strcmp(argv[i], "-polygon")) {
-
-         // Create thread to handle polygon queries
-         entry = &startPolygonQueryThread;
-         tArgs[threadCount].input = argv[i + 1];
-         if (logging) {
-            tArgs[threadCount].output = argv[i + 2];
-            i += 3;
-         } else {
-            tArgs[threadCount].output = NULL;
-            i += 2;
-         }
-
-      } else {
-
-         // We don't really need the server to be all that tolerant of input
-         // error since it is just a simulation of external calls. If a bad
-         // service type is specified, just report it and exit.
-         printf("ERROR: Invalid service type %s. Exiting...\n", argv[i]);
-         exit(-1);
+      
       }
 
       retval = pthread_create(&threads[threadCount], 
@@ -456,51 +471,75 @@ int main(int argc, char** argv) {
          exit(-1);
       }
       threadCount++;
+      i += 2;
 
    }
 
-   FILE* rtFile = fopen("response_times", "w");
+   FILE* rtFile = fopen("/u/s/t/sturdeva/public/736/736_p2/mrnet/PaperData/1x4eps/response_times.csv", "w");
+
+   struct timespec sleepTime;
+   sleepTime.tv_nsec = 50000000;
+   sleepTime.tv_sec = 0;
+   double nextStreamTime = 1.0;
+   double nextSnapshotTime = 1.0;
 
    // TODO: Timekeeping/cv_signal
-   while (tick < LAST_TICK) {
-      retval = sleep(1);
-      if (retval != 0) {
-         printf("ERROR: Failed to sleep!\n");
-      }
+   while (tick < LAST_TICK && totalTime < END_TIME) {
+      nanosleep(&sleepTime, NULL);
+      
       pthread_mutex_lock(&timeLock);
-      fprintf(rtFile, "%ld,%lf,%ld,%ld,%ld,%ld\n", 
-         tick, 
-         totalResponseTime / totalResponses, 
-         queriesSent, 
-         replaysSent, 
-         pointsSent,
-         ticksPerSec
-      );
-      fflush(rtFile);
-      int spdChange = changeSpeed();
-      totalResponseTime = 0;
-      totalResponses = 0;
-      queriesSent = 0;
-      replaysSent = 0;
-      std::cout << "time = " << (tick - FIRST_TICK) / tickResolution << " speed = " << ticksPerSec << "\n";
-      if (spdChange == -1) {
-         //ticksPerSec *= TICK_REDUCTION_FACTOR;
-         //std::cout << "Slowing down! New speed = " << ticksPerSec << "ticks/sec\n";
-      } else if (spdChange == 1) {
-         //ticksPerSec *= TICK_INCREASE_FACTOR;
-         //std::cout << "Speed up! New speed = " << ticksPerSec << "ticks/sec\n";
-      }
-      tick += ticksPerSec;
+      tick += ticksPerSec * ((double)sleepTime.tv_nsec) / 1000000000.0l;
+      totalTime += ((double)sleepTime.tv_nsec) / 1000000000.0l;
       pthread_cond_broadcast(&timeCond);
       pthread_mutex_unlock(&timeLock);
-      std::cout << "Tick = " << tick << "\n";
-      if (tick >= nextSnapshotTime) {
+
+      int spdChange = changeSpeed();
+      if (totalTime >= nextStreamTime) {
+         fprintf(rtFile, "%ld,%ld,%lf,%ld,%ld,%ld,%lf,%ld\n",
+            serverTime,
+            tick, 
+            totalResponseTime / totalResponses, 
+            queriesSent, 
+            replaysSent, 
+            pointsSent,
+            ticksPerSec,
+            totalFrontEndRecs
+         );
+         fflush(rtFile);
+         
+         totalResponseTime = 0;
+         totalResponses = 0;
+         queriesSent = 0;
+         replaysSent = 0;
+         pointsSent = 0;
+         totalFrontEndRecs = 0;
+
+         fclose(rtFile);
+         rtFile = fopen("response_times.csv", "a");
+         std::cout << "Time = " << serverTime << " speed = " << ticksPerSec << "\n";
+         std::cout << "Queue Length = " << responseQueue.getCount() << " (" << nSent - nBack << " " << nSent << " - " << nBack << ")\n";
+         serverTime++;
+         nextStreamTime += 1.0;//ticksPerSec;
+      }
+      
+      if (totalTime >= nextSnapshotTime) {
+         if (spdChange == -1) {
+            ticksPerSec -= TICK_REDUCTION_FACTOR;
+            std::cout << "Slowing down! New speed = " << ticksPerSec << " ticks/sec\n";
+         } else if (spdChange == 1 && 
+                    !speedWarning && 
+                    totalTime > TICK_INCREASE_START) {
+               //ticksPerSec += TICK_INCREASE_FACTOR;
+         }
          frontEndSnapshotRequest();
-         nextSnapshotTime += SNAPSHOT_INTERVAL;
+         nextSnapshotTime += 1.0;//snapshotInterval;
+         speedWarning = false;
       }
    }
 
    fclose(rtFile);
+
+   std::cout << "Closed response time file!\n";
 
    // Wait for each of the child threads to finish.
    for (; threadCount > 0; threadCount--) {
@@ -508,7 +547,9 @@ int main(int argc, char** argv) {
       pthread_join(threads[threadCount - 1], NULL);
    }
 
-   printf("Client finished. Final ticks/sec = %ld\n", ticksPerSec);
+   sleep(10);
+
+   printf("Client finished. Final ticks/sec = %lf\n", ticksPerSec);
    return 0;
 }
 
@@ -520,6 +561,7 @@ void* startPointQueryThread(void* arg) {
    FILE* outfd;
    int fd = -1;//connectToHost();
    size_t index;
+   std::cout << "QUERIER PID = " << syscall(SYS_gettid) << "\n";
    char* writeBuf = (char*)malloc(N_DIMENSIONS * sizeof(double));
    char* buf = (char*)malloc(N_DIMENSIONS * DIM_BUFFER_SIZE);
    if (writeBuf == NULL || buf == NULL) {
@@ -588,6 +630,7 @@ void* startStreamThread(void* arg) {
    FILE* outfd;
    int fd = -1;//connectToHost();
    size_t index;
+   std::cout << "STREAMER PID = " << syscall(SYS_gettid) << "\n";
    char* writeBuf = (char*)malloc(N_DIMENSIONS * sizeof(double));
    char* buf = (char*)malloc(N_DIMENSIONS * DIM_BUFFER_SIZE);
    if (writeBuf == NULL || buf == NULL) {
@@ -632,6 +675,3 @@ void* startStreamThread(void* arg) {
    std::cout << "Thread finished!\n";
 }
 
-void* startPolygonQueryThread(void* arg) {
-   return NULL;
-}

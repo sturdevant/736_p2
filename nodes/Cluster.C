@@ -18,10 +18,10 @@ Cluster::~Cluster() {
 }
 
 void Cluster::printCheckPoints() {
-   std::cout << "Cluster " << id << " CHECKPOINTS:\n";
+   //std::cout << "Cluster " << id << " CHECKPOINTS:\n";
    for (unsigned int i = 0; i < checkPoints.size(); i++) {
       Point* pt = checkPoints[i];
-      std::cout << "\t" << pt->getValue()[0] << ", " << pt->getValue()[1] << "\n";
+      //std::cout << "\t" << pt->getValue()[0] << ", " << pt->getValue()[1] << "\n";
    }
 }
 

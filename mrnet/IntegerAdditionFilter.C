@@ -74,7 +74,12 @@ void PointFilter(std::vector< MRN::PacketPtr >& packets_in,
          }
          //std::cout << "(" << net->get_LocalRank() << ") I care about (" << ptArr[0] << ", " << ptArr[1] << ")\n";
          packets_out.push_back(packets_in[i]);
+      } else {
+         if (type == REQUEST_TYPE_POINT_DATA) {
+            std::cout << "FILTERED OUT POINT QUERY!\n";
+         }
       }
+
       delete pt;
    }
 }

@@ -40,10 +40,12 @@ void Request::unpack(unsigned long* uId,
                      unsigned long* ul2) {
    *uId = id;
    *uType = t;
-   *uTime = pt->getTimestamp();
-   bcopy(pt->getValue(), uVal, 2 * sizeof(double));
-   *uWeight = pt->getWeight(*uTime);
-   *uNWeight = pt->getNWeight(*uTime);
+   if (pt != NULL) {
+      *uTime = pt->getTimestamp();
+      bcopy(pt->getValue(), uVal, 2 * sizeof(double));
+      *uWeight = pt->getWeight(*uTime);
+      *uNWeight = pt->getNWeight(*uTime);
+   }
    *ul1 = long1;
    *ul2 = long2;
 }

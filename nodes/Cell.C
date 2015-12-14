@@ -3,6 +3,7 @@
 
 Cell::Cell() {
    assigned = false;
+   time = 0;
 }
 
 Cell::~Cell() {
@@ -50,4 +51,12 @@ void Cell::setFringe(bool flag) {
 
 std::vector<Point*>* Cell::getPointVector() {
    return &vec;
+}
+
+void Cell::setTimestamp(unsigned long newTime) {
+   time = newTime;
+}
+
+unsigned long Cell::getTimestamp(void) {
+   return time;
 }

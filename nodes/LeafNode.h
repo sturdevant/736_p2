@@ -91,6 +91,8 @@ private:
    unsigned int uniqueId;
    double* mins;
    double* maxes;
+   double* aMins;
+   double* aMaxes;
    unsigned int* dimFactors;
    unsigned int maxIndex;
    unsigned int* lengths;

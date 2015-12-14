@@ -15,11 +15,14 @@ public:
    void setAssigned(bool flag);
    void setShadow(bool flag);
    void setFringe(bool flag);
+   void setTimestamp(unsigned long newTime);
+   unsigned long getTimestamp(void);
 
 private:
    std::vector<Point*> vec;
    bool assigned;
    bool shadow;
    bool fringe;
+   unsigned long time;
 
 };

@@ -9,6 +9,10 @@
  * public functions of leaf nodes are described first.
  */
 
+unsigned long nWritten = 0;
+unsigned long duplicateClusteredPoints = 0;
+unsigned long totalClusteredPoints = 0;
+unsigned long duplicatePointsSinceLastReport = 0;
 unsigned long queriesFilteredSinceLastReport = 0;
 unsigned long shadowUpdatesSinceLastReport = 0;
 unsigned long clusterReplacementsSinceLastReport = 0;
@@ -40,8 +44,14 @@ LeafNode::LeafNode(unsigned int nDims,
    this->ptRemovalThreshold = ptRemovalThresh;
    this->mins = (double*)malloc(nDims * sizeof(double));
    this->maxes = (double*)malloc(nDims * sizeof(double));
+   this->aMins = (double*)malloc(nDims * sizeof(double));
+   this->aMaxes = (double*)malloc(nDims * sizeof(double));
    bcopy(mins, this->mins, nDims * sizeof(double));
    bcopy(maxes, this->maxes, nDims * sizeof(double));
+   bcopy(assignedMins, this->aMins, nDims * sizeof(double));
+   bcopy(assignedMaxes, this->aMaxes, nDims * sizeof(double));
+   
+   //std::cout << "(" << uniqueId << ") Assigned y from " << aMins[1] << " to " << aMaxes[1] << "\n";
    this->decay = decay;
    this->requestFunc = requestFunc;
    this->responseFunc = responseFunc;
@@ -62,15 +72,9 @@ LeafNode::LeafNode(unsigned int nDims,
    }
    assignCells(assignedMins, assignedMaxes);
 
-   // TODO: (maybe? maybe not) Need to thread out behavior here. We need to make
-   // it so that this can run independently of the caller and can accept
-   // asynchronous requests and responses.
 }
 
 LeafNode::~LeafNode() {
-   //pthread_cancel(thread);
-   //pthread_join(thread, NULL);
-   //free(thread);
    unsigned int i;
    for (i = 0; i <= maxIndex; i++) {
       delete cells[i];
@@ -81,6 +85,8 @@ LeafNode::~LeafNode() {
    free(cells);
    free(dimFactors);
    free(lengths);
+   free(aMins);
+   free(aMaxes);
 }
 
 /*
@@ -97,6 +103,9 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
    //std::cout << "Got cell!\n";
    if (t != REQUEST_TYPE_SNAPSHOT && (c == NULL || !c->isAssigned())) {
       //std::cout << "Filtered out point " << pt->getValue()[0] << ", " << pt->getValue()[1] << "\n";
+      if (t == REQUEST_TYPE_POINT_DATA) {
+         //std::cout << "(" << uniqueId << ") Filtered query (ua) " << pt->getValue()[0] << ", " << pt->getValue()[1] << " (" << req->getID() << ")\n";
+      }
       queriesFilteredSinceLastReport++;
       return RETURN_CODE_NO_ERROR;
    }
@@ -113,25 +122,12 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
       return handleAdd(req, res);
    case REQUEST_TYPE_POINT_DATA:
       if (c->isShadow() || c->isFringe()) {
+         //std::cout << "(" << uniqueId << ") Filtered query " << pt->getValue()[0] << ", " << pt->getValue()[1] << " (" << req->getID() << "s = " << c->isShadow() << " f = " << c->isFringe() << ")\n";
          return RETURN_CODE_NO_ERROR;
       } else {
          queriesSinceLastReport++;
-         // TIMER HERE
-         struct timespec ts;
-         struct timespec te;
-
-         int success = clock_gettime(CLOCK_REALTIME, &ts);
+         //std::cout << "(" << uniqueId << ") Answered query " << pt->getValue()[0] << ", " << pt->getValue()[1] << " (" << req->getID() << ")\n";
          ReturnCode rc = handlePoint(req, res);
-         success = clock_gettime(CLOCK_REALTIME, &te);
-         unsigned long t1 = ts.tv_sec * 1000000000 + ts.tv_nsec;
-         unsigned long t2 = te.tv_sec * 1000000000 + te.tv_nsec;
-         unsigned long time_elapsed = t2 - t1;
-         // END TIMER HERE
-         if (time_elapsed > 2000000000) {
-
-            Request r(REQUEST_TYPE_SLOWDOWN);
-            requestFunc(0, &r);
-         }
          return rc;
       }
    case REQUEST_TYPE_POLYGON_DATA:
@@ -149,45 +145,84 @@ ReturnCode LeafNode::query(Request* req, Response* res) {
 
    return RETURN_CODE_BAD_REQUEST_TYPE;
 }
-
+void writeHelp(unsigned long time, char* fstr, char* data){
+   if (time == 230){
+      FILE* f = fopen(fstr, "a");
+      fprintf(f, data);
+      fclose(f);
+   }
+}
 void LeafNode::snapshot(FILE* ptFile, FILE* assignmentFile, unsigned long time) {
 
-   unsigned long nWritten = 0;
+   nWritten = 0;
    double* d = (double*)malloc(dims * sizeof(double));
-   for (unsigned int i = 0; i <= maxIndex; i++) { 
+   Point* testPt = new Point(d, time, time);
+   double* x = testPt->getValue();
+   double* y = x + 1;
+   unsigned int nToPrint = 16;
+   double remainder;
+   double step;
 
-      indexToDArray(i, d);
-      //if (uniqueId == 10) {
-      //   std::cout << "-->\tSNAPSHOTTING POINT (" << d[0] << ", " << d[1] << ")\n";
-      //}
-      int flag = 0;
-      if (cells[i]->isAssigned()) {
-         flag = 1;
-         if (cells[i]->isShadow()) {
-            flag = 2;
-         } else if (cells[i]->isFringe()) {
-            flag = 3;
-         }
-      }
-      //fprintf(assignmentFile, "%lf,%lf,%d\n", d[0], d[1], flag);
-
-      std::vector<std::vector<Point*>*> neighborLists;
-      Point* testPt = new Point(d, time, time);
-      getPointNeighborList(testPt, neighborLists, time);
+   FILE* file = fopen("/u/s/t/sturdeva/public/736/736_p2/mrnet/testing/outer_for", "w");
+   fprintf(file, "%ld", time);
+   fclose(file);
+   char* f230str = "/u/s/t/sturdeva/public/736/736_p2/mrnet/testing/f230";
+   char* f230data;
+   for (*x = aMins[0] + eps / 6.0; (*x) < aMaxes[0]; (*x) += eps) {
       
-      if (cells[i] != NULL && !cells[i]->isShadow()) {
-         std::vector<Point*>* points = cells[i]->getPointVector();
-         for (unsigned int j = 0; j < points->size(); j++) {
-            Point* pt = (*points)[j];
-            Cluster* clust = pt->getCluster();
-            clust = verifyCluster(clust, pt, time);
-            nWritten++;
-            fprintf(ptFile, "%lu:%lf,%lf,%lu,%lf,%lf\n", pt->getTimestamp(), pt->getValue()[0], pt->getValue()[1], clust == NULL ? 0L : clust->getId(), pt->getWeight(pt->getTimestamp()), pt->getNWeight(pt->getTimestamp()));
-            fflush(ptFile);
+      for (*y = aMins[1] + eps / 6.0; (*y) < aMaxes[1]; (*y) += eps) {
+         Cell* c = getPointCell(testPt);
+         f230data = "Cell* c = getPointCell(testPt);\n";
+         writeHelp(time, f230str, f230data);
+         if (c != NULL && c->isAssigned() && !c->isShadow() && !c->isFringe()) {
+            //fprintf(assignmentFile, "%lf,%lf\n", *x, *y);
+            std::vector<Point*>* points = c->getPointVector();
+            f230data = "std::vector<Point*>* points = c->getPointVector();\n";
+            writeHelp(time, f230str, f230data);
+            if (points->size() == 0) {
+               continue;
+            }
+            step = nToPrint / points->size();
+            f230data = "step = nToPrint / points->size();\n";
+            writeHelp(time, f230str, f230data);
+            remainder = 0;
+            for (unsigned int j = 0; j < points->size(); j++) {
+               f230data = "for j=0; j<size; j++\n";
+               writeHelp(time, f230str, f230data);
+               remainder += step;
+               if (remainder < 0) {
+                  continue;
+               }
+               remainder -= 1.0;
+               Point* pt = (*points)[j];
+               Cluster* clust = pt->getCluster();
+               clust = verifyCluster(clust, pt, time);
+               nWritten++;
+               f230data = "nWritten++\n";
+               writeHelp(time, f230str, f230data);
+               fprintf(ptFile, "%lu:%lf,%lf,%lu,%lf,%lf\n", pt->getTimestamp(), pt->getValue()[0], pt->getValue()[1], clust == NULL ? 0L : clust->getId(), pt->getWeight(pt->getTimestamp()), pt->getNWeight(pt->getTimestamp()));
+               f230data = "wrote snapshot\n";
+               writeHelp(time, f230str, f230data);
+            }
+            f230data = "Exited j for loop\n";
+            writeHelp(time, f230str, f230data);
          }
       }
-      delete testPt;
+      f230data = "Exited y for loop\n";
+      writeHelp(time, f230str, f230data);
+      if (*x == aMins[0] + eps / 6.0) {
+         file = fopen("/u/s/t/sturdeva/public/736/736_p2/mrnet/testing/end_inner_for", "w");
+         fprintf(file, "%ld", time);
+         fclose(file);
+      }
    }
+   f230data = "Exited x for loop\n";
+   writeHelp(time, f230str, f230data);
+   file = fopen("/u/s/t/sturdeva/public/736/736_p2/mrnet/testing/end_outer_for", "w");
+   fprintf(file, "%ld", time);
+   fclose(file);
+   delete testPt;
+
    std::cout << "(" << uniqueId << ": " << time << ") Number of points written = " << nWritten << "\n";
    fflush(stdout);
 
@@ -198,13 +233,10 @@ void LeafNode::indexToDArray(unsigned int index, double* d) {
    for (int i = dims - 1; i >= 0; i--) {
       d[i] = mins[i] + eps * (double)(index / dimFactors[i]);
       index = index % dimFactors[i];
-      //std::cout << "dim: " << i << " " << d[i] << " next index: " << index << "\n";
    }
 }
 
 // PRIVATE INTERFACE BEGINS HERE
-
-// TODO: Thread starting function. (static?)
 
 ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    unsigned long time = req->getPoint()->getTimestamp();
@@ -219,7 +251,7 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    pFile = fopen(ptFilename, "w");
    FILE* aFile;
    aFile = fopen(assignFilename, "w");
-   snapshot(pFile, NULL, time);
+   snapshot(pFile, aFile, time);
    fclose(pFile);
    fclose(aFile);
 
@@ -229,21 +261,44 @@ ReturnCode LeafNode::handleSnapshot(Request* req, Response* res) {
    fflush(stdout);
 
    char statsFilename[80];
-   snprintf(statsFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/testing/results/LN_stats_%d_%ld", uniqueId, time);
+   snprintf(statsFilename, 80, "/u/s/t/sturdeva/public/736/736_p2/mrnet/PaperData/1x4eps/LN_stats_%d.csv", uniqueId);//, time);
    FILE* sFile;
-   sFile = fopen(statsFilename, "w");
+   sFile = fopen(statsFilename, "a");
+   
+   fprintf(sFile, "%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\n", 
+      queriesFilteredSinceLastReport, 
+      shadowUpdatesSinceLastReport,
+      clusterReplacementsSinceLastReport,
+      addsSinceLastReport,
+      queriesSinceLastReport,
+      duplicatePointsSinceLastReport,
+      duplicateClusteredPoints,
+      nPoints,
+      totalClusteredPoints,
+      nWritten
+   );
+
+   /*
    fprintf(sFile, "Filtered: %ld\n", queriesFilteredSinceLastReport);
    fprintf(sFile, "Shadow Updates: %ld\n", shadowUpdatesSinceLastReport);
    fprintf(sFile, "Replacements: %ld\n", clusterReplacementsSinceLastReport);
    fprintf(sFile, "Adds: %ld\n", addsSinceLastReport);
    fprintf(sFile, "Queries: %ld\n", queriesSinceLastReport);
+   fprintf(sFile, "Duplicates: %ld\n", duplicatePointsSinceLastReport);
+   fprintf(sFile, "Duplicates (clustered): %ld\n", duplicateClusteredPoints);
    fprintf(sFile, "Total Points: %ld\n", nPoints);
+   fprintf(sFile, "Total Points (clustered): %ld\n", totalClusteredPoints);
+   fprintf(sFile, "Total Points (written): %ld\n", nWritten);
+   //*/
+
    fclose(sFile);
 
+   duplicateClusteredPoints = 0;
+   duplicatePointsSinceLastReport = 0;
    queriesFilteredSinceLastReport = 0;
    shadowUpdatesSinceLastReport = 0;
    clusterReplacementsSinceLastReport = 0;
-   //queriesSinceLastReport = 0;
+   queriesSinceLastReport = 0;
    addsSinceLastReport = 0;
    nextPrintTime = 0;
    
@@ -532,6 +587,10 @@ ReturnCode LeafNode::handleAdd(Request* req, Response* res) {
    if (lpt != NULL) {
       lpt->setWeight(lpt->getWeight(time) + pt->getWeight(time));
       lpt->setTimestamp(time);
+      if (lpt->getCluster() != NULL) {
+         duplicateClusteredPoints++;
+      }
+      duplicatePointsSinceLastReport++;
       delete pt;
       return RETURN_CODE_NO_ERROR;
    }//*/ 
@@ -675,10 +734,12 @@ void LeafNode::setPointCluster(Point* pt, Cluster* clust) {
    }
 
    if (clust != NULL) {
+      totalClusteredPoints++;
       clust->addPt(pt);
    }
 
    if (old != NULL) {
+      totalClusteredPoints--;
       if (old->removePt(pt) == 0) {
          deleteCluster(old);
       }
@@ -872,19 +933,19 @@ Cluster* LeafNode::verifyCluster(Cluster* clust, Point* pt, unsigned long time) 
       return clust;
    }
 
-   std::cout << "Cluster removed from point! " << clust->getId() << "\n";
+   //std::cout << "Cluster removed from point! " << clust->getId() << "\n";
    clust->printCheckPoints();
    Cluster* newClust = makeNewCluster();
    // TODO: handle case where last point is changed. Then, no need for replace.
    bool needsReplace = (clust->getPtCount() != 1);
    setPointCluster(pt, newClust);
-   std::cout << "New cluster created!\n";
+   //std::cout << "New cluster created!\n";
    newClust->addCheckPoint(pt);
    //std::cout << "Checkpoint added!\n";
    if (needsReplace) {
       replaceClusterFromPoint(clust, newClust, pt);
    }
-   std::cout << "Returning from split!\n";
+   //std::cout << "Returning from split!\n";
    //exit(0);
    
    return newClust;
@@ -1150,9 +1211,11 @@ void LeafNode::getPointNeighborList(Point* point, std::vector<std::vector<Point*
    std::vector<Cell*> group = getPointCellGroup(point);
    //std::cout << "Filling neighbor vector (up to " << group.size() << ")...\n";
 
+
    for (unsigned int i = 0; i < group.size(); i++) {
-      if (group[i] == NULL) {
-         //std::cout << "ERROR: NULL CELL...\n";
+      if (group[i]->getTimestamp() == time) {
+         neighborList.push_back(group[i]->getPointVector());
+         continue;
       }
       std::vector<Point*>* list = group[i]->getPointVector();
       if (list != NULL) {
@@ -1175,6 +1238,7 @@ void LeafNode::getPointNeighborList(Point* point, std::vector<std::vector<Point*
             }   
          }
       }
+      group[i]->setTimestamp(time);
    }
 }
 
@@ -1415,8 +1479,12 @@ void LeafNode::assignPointCell(Point* pt) {
 
 void LeafNode::recursiveAssignSubslice(double* low, double* high, double* cur, unsigned int nDims) {
    unsigned int curDim = dims - nDims;
+   unsigned int curPos = 0;
+   unsigned int maxPos = ceil((high[curDim] - low[curDim]) / eps);
    if (nDims == 1) {
-      for (cur[curDim] = low[curDim]; cur[curDim] < high[curDim]; cur[curDim] += eps) {
+      for (curPos = 0; curPos < maxPos; curPos++) {
+      //cur[curDim] = low[curDim]; cur[curDim] < high[curDim]; cur[curDim] += eps) {
+         cur[curDim] = low[curDim] + curPos * eps + eps / 2;
          // TODO: When the point goes out of scope, it dies! careful!
          Point pt(cur, 0, 0);
          //std::cout << "Point at: " << cur[0] << ", " << cur[1] << "\n";
@@ -1442,7 +1510,10 @@ void LeafNode::recursiveAssignSubslice(double* low, double* high, double* cur, u
          */
       }
    } else {
-      for (cur[curDim] = low[curDim]; cur[curDim] < high[curDim]; cur[curDim] += eps) {
+      for (curPos = 0; curPos < maxPos; curPos++) {
+      //cur[curDim] = low[curDim]; cur[curDim] < high[curDim]; cur[curDim] += eps) {
+         cur[curDim] = low[curDim] + curPos * eps + eps / 2;
+      //for (cur[curDim] = low[curDim]; cur[curDim] < high[curDim]; cur[curDim] += eps) {
          recursiveAssignSubslice(low, high, cur, nDims - 1);
       }
    }

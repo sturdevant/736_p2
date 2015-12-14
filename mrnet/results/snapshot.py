@@ -21,7 +21,7 @@ for t in s:
 
     # Go through assignments to print grid
     print "getting assignments for grid at time " + t
-    """
+    
     for fname in glob.glob('./LN_assigns_*' + t):
         i = fname[13]
         f = open(fname)
@@ -31,7 +31,7 @@ for t in s:
                 x = float(arr[1])
                 y = float(arr[0])
                 ax.add_patch(patches.Rectangle((x,y), eps, eps, linestyle='dotted', fill = False, linewidth = .5, color = '#FFFFFF'))
-    """ 
+     
     print "got assignment grid" 
     lat = []
     lon = []
@@ -60,9 +60,11 @@ for t in s:
         r = M - m
         if r != 0:
             cl = (np.array(cl) - m)/r
-    ax.scatter(ulon, ulat, c='#DDDDDD', linewidth='0', s=5)
-    if hasCluster:
-        ax.scatter(lon, lat, c=cl, linewidth='0', s=5)
+    print "Printing ulon & ulat"
+    print ulon, ulat
+    #ax.scatter(ulon, ulat, c='#DDDDDD', linewidth='0', s=5)
+    #if hasCluster:
+        #ax.scatter(lon, lat, c='#000000', linewidth='0', s=5)
 
     plt.xlabel("longitude")
     plt.ylabel("latitude")
